@@ -1,0 +1,5 @@
+[DEFAULT]
+APIKey     = yourapikey
+SecretKey  = yoursecretkey
+HttpProxy  = yourhttpproxy
+HttpsProxy = yourhttpsproxy
