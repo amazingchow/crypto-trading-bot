@@ -15,6 +15,8 @@ from binance.exceptions import BinanceAPIException
 class BinanceTradeClient():
     '''
     币安打新机器人
+
+    币安API根地址: https://api.binance.com/api/v3/
     '''
     def __init__(self, ak: str, sk: str, proxies: dict):
         self.cli = Client(api_key=ak, api_secret=sk, requests_params={
