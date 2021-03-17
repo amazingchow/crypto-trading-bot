@@ -26,6 +26,9 @@ class BinanceTradeClient():
             })
     
     def is_ready(self):
+        '''
+        测试网络时延: httpstat https://api.binance.com/api/v3/ping
+        '''
         ready = True
         try:
             self.cli.ping()
