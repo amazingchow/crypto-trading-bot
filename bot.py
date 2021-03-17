@@ -2,8 +2,10 @@
 import coloredlogs, logging
 logger = logging.getLogger(__name__)
 coloredlogs.install(level="DEBUG", logger=logger, fmt="[%(asctime)s][%(levelname)s] %(message)s")
+
 import datetime
 import time
+
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -12,9 +14,10 @@ from binance.exceptions import BinanceAPIException
 
 class BinanceTradeClient():
     '''
-    币安自动交易机器人
-    '''
+    币安打新机器人
 
+    币安API根地址: https://api.binance.com/api/v3/
+    '''
     def __init__(self, ak: str, sk: str, proxies: dict):
         self.cli = Client(api_key=ak, api_secret=sk, requests_params={
                 "proxies": proxies,
@@ -23,25 +26,26 @@ class BinanceTradeClient():
             })
     
     def is_ready(self):
+        '''
+        测试网络时延: httpstat https://api.binance.com/api/v3/ping
+        '''
         ready = True
         try:
             self.cli.ping()
-            ready = True
         except BinanceAPIException as e:
             logger.error("failed to setup the trade-bot, err: {}.".format(e))
             ready = False
-        return ready
+        finally:
+            return ready
 
     def buy_market_ticker_price(self, sym: str, quantity: float):
         '''
         buy some quantities of a specific coin, like sym == PHABUSD
         '''
         try:
-            order = self.cli.order_market_buy(symbol=sym, quoteOrderQty=quantity, recvWindow=200)
+            self.cli.order_market_buy(symbol=sym, quoteOrderQty=quantity, recvWindow=200)
         except Exception as e:
             logger.error(e)
-        finally:
-            logger.info("buy {}".format(sym))
 
 
 if __name__ == "__main__":
@@ -55,17 +59,19 @@ if __name__ == "__main__":
 
     bot = BinanceTradeClient(ak=cfg_parser["DEFAULT"]["APIKey"], sk=cfg_parser["DEFAULT"]["SecretKey"], proxies=proxies)
 
-    # 2021年3月16号下午5点整, 切记: 一定一定要在4点59分以后运行
-    target_time = datetime.datetime(2021, 3, 16, 17, 0).timestamp()
-    current_time = time.time()
-    while current_time < target_time:
-        current_time = time.time()
-        time.sleep(0.001)
+    # 根据实际情况来修改上新时间, 这里的上新时间为2021年3月16号下午5点整.
+    new_arrival_time = datetime.datetime(2021, 3, 16, 17, 0).timestamp()
 
-    # 购入价值300 BUSD的BIFI, 尝试连续购买5次
+    now = time.time()
+    while now < new_arrival_time:
+        time.sleep(0.001)
+        now = time.time()
+
+    # !!!在现货钱包里只留300 BUSD.
+    # 购入价值300 BUSD的BIFI, 尝试连续购买5次.
     cnt = 0
     while cnt < 6:
         bot.buy_market_ticker_price("BIFIBUSD", 300)
-        # 测试发现不用加延迟
+        time.sleep(0.01)
         cnt += 1
     
