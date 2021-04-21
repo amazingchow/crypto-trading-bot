@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-import coloredlogs, logging
+import coloredlogs
+import datetime
+import logging
 logger = logging.getLogger(__name__)
 coloredlogs.install(level="DEBUG", logger=logger, fmt="[%(asctime)s][%(levelname)s] %(message)s")
-
-import datetime
+import os
 import time
-
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -19,11 +19,7 @@ class BinanceTradeClient():
     币安API根地址: https://api.binance.com/api/v3/
     '''
     def __init__(self, ak: str, sk: str, proxies: dict):
-        self.cli = Client(api_key=ak, api_secret=sk, requests_params={
-                "proxies": proxies,
-                "verify": False,
-                "timeout": 10
-            })
+        self.cli = Client(api_key=ak, api_secret=sk, requests_params={"proxies": proxies, "verify": False, "timeout": 10})
     
     def is_ready(self):
         '''
@@ -33,7 +29,7 @@ class BinanceTradeClient():
         try:
             self.cli.ping()
         except BinanceAPIException as e:
-            logger.error("failed to setup the trade-bot, err: {}.".format(e))
+            logger.error("failed to setup the binance-trade-bot, err: {}.".format(e))
             ready = False
         finally:
             return ready
@@ -49,16 +45,25 @@ class BinanceTradeClient():
 
 
 if __name__ == "__main__":
-    import configparser
-    cfg_parser = configparser.ConfigParser()
-    cfg_parser.read("./config.ini")
+    ak = os.getenv("BINANCE_MAINNET_API_KEY")
+    sk = os.getenv("BINANCE_MAINNET_SECRET_KEY")
+    if ak == None or sk == None:
+        logger.critical("please provide BINANCE_MAINNET_API_KEY and BINANCE_MAINNET_SECRET_KEY first")
+    
+    http_proxy = os.getenv("HTTP_PROXY")
+    https_proxy = os.getenv("HTTPS_PROXY")
+    if http_proxy == None or https_proxy == None:
+        logger.critical("please provide HTTP_PROXY and HTTPS_PROXY first")
     proxies = {
-        "http": cfg_parser["DEFAULT"]["HttpProxy"],
-        "https": cfg_parser["DEFAULT"]["HttpsProxy"]
+        "http": http_proxy,
+        "https": https_proxy
     }
 
-    bot = BinanceTradeClient(ak=cfg_parser["DEFAULT"]["APIKey"], sk=cfg_parser["DEFAULT"]["SecretKey"], proxies=proxies)
-
+    bot = BinanceTradeClient(ak=ak, sk=sk, proxies=proxies)
+    while not bot.is_ready():
+        time.sleep(2)
+    logger.info("binance-trade-bot has got ready!!!")
+    
     # 根据实际情况来修改上新时间, 这里的上新时间为2021年3月16号下午5点整.
     new_arrival_time = datetime.datetime(2021, 3, 16, 17, 0).timestamp()
 
