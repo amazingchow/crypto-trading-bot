@@ -19,7 +19,6 @@ class BinanceGridTradingBot():
     币安网格交易机器人
     '''
     def __init__(self, use_proxy: Optional[bool] = False, use_testnet: Optional[bool] = False):
-        self._is_inited = False
         self._use_testnet = use_testnet
 
         self._ak, self._sk = None, None
@@ -36,7 +35,7 @@ class BinanceGridTradingBot():
                 _g_logger.critical("Please set env for BINANCE_MAINNET_API_KEY and BINANCE_MAINNET_SECRET_KEY.")
                 return
         
-        self._requests_params: Dict[str, str] = {"verify": False, "timeout": 10}
+        self._requests_params: Dict[str, str] = {"timeout": 10}
         if use_proxy:
             http_proxy = os.getenv("HTTP_PROXY")
             https_proxy = os.getenv("HTTPS_PROXY")
@@ -57,7 +56,6 @@ class BinanceGridTradingBot():
             testnet=self._use_testnet,
         )
         self._sock_mgr = BinanceSocketManager(client=api_aync_client)
-        self._is_inited = True
 
     async def feed_kline(self, sym: Optional[str] = None, interval: Optional[str] = "1m"):
         sock_client = self._sock_mgr.kline_socket(symbol=sym, interval=interval)
