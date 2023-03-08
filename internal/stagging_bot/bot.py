@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import coloredlogs
 import logging
-_g_logger = logging.getLogger(__name__)
+_g_logger = logging.getLogger("BinanceStaggingBot")
 coloredlogs.install(level="DEBUG", logger=_g_logger, fmt="[%(asctime)s][%(levelname)s] %(message)s")
 
 import os
@@ -12,13 +12,14 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from binance.client import Client
 from binance.exceptions import BinanceAPIException
 from binance.exceptions import BinanceRequestException
+from typing import Optional
 
 
 class BinanceStaggingBot():
     '''
     币安打新机器人
     '''
-    def __init__(self, use_proxy=False, use_testnet=False):
+    def __init__(self, use_proxy: Optional[bool] = False, use_testnet: Optional[bool] = False):
         self._is_inited = False
 
         ak, sk = None, None
@@ -56,7 +57,7 @@ class BinanceStaggingBot():
         )
         self._is_inited = True
     
-    def is_ready(self):
+    def is_ready(self) -> bool:
         '''
         Test connectivity to the Rest API.
         '''
@@ -74,7 +75,7 @@ class BinanceStaggingBot():
                 _g_logger.info("BinanceStaggingBot is ready.")
             return ready and self._is_inited
 
-    def run(self, sym: str, quantity: float, new_arrival_time: int, try_cnt: int):
+    def run(self, sym: Optional[str] = None, quantity: Optional[int] = None, new_arrival_time: Optional[int] = None, try_cnt: int = 5):
         '''
         Buy some quantities of a specific coin at particular time, like sym == PHABUSD
         '''
