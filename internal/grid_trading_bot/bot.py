@@ -14,45 +14,57 @@ from typing import Dict
 from typing import Optional
 
 
+class BinanceGridTradingBotSetupException(Exception):
+    pass
+
+
 class BinanceGridTradingBot():
     '''
     币安网格交易机器人
     '''
+
+    ak = None
+    sk = None
+    requests_params = None
+
     def __init__(self, use_proxy: Optional[bool] = False, use_testnet: Optional[bool] = False):
         self._use_testnet = use_testnet
 
-        self._ak, self._sk = None, None
+        self.ak, self.sk = None, None
         if use_testnet:
-            self._ak = os.getenv("BINANCE_TESTNET_API_KEY")
-            self._sk = os.getenv("BINANCE_TESTNET_SECRET_KEY")
-            if self._ak is None or self._sk is None:
-                _g_logger.critical("Please set env for BINANCE_TESTNET_API_KEY and BINANCE_TESTNET_SECRET_KEY.")
-                return
+            self.ak = os.getenv("BINANCE_TESTNET_API_KEY")
+            self.sk = os.getenv("BINANCE_TESTNET_SECRET_KEY")
+            if self.ak is None or self.sk is None:
+                err_msg = "Please set env for BINANCE_TESTNET_API_KEY and BINANCE_TESTNET_SECRET_KEY."
+                _g_logger.critical(err_msg)
+                raise BinanceGridTradingBotSetupException(err_msg)
         else:
-            self._ak = os.getenv("BINANCE_MAINNET_API_KEY")
-            self._sk = os.getenv("BINANCE_MAINNET_SECRET_KEY")
-            if self._ak is None or self._sk is None:
-                _g_logger.critical("Please set env for BINANCE_MAINNET_API_KEY and BINANCE_MAINNET_SECRET_KEY.")
-                return
+            self.ak = os.getenv("BINANCE_MAINNET_API_KEY")
+            self.sk = os.getenv("BINANCE_MAINNET_SECRET_KEY")
+            if self.ak is None or self.sk is None:
+                err_msg = "Please set env for BINANCE_MAINNET_API_KEY and BINANCE_MAINNET_SECRET_KEY."
+                _g_logger.critical(err_msg)
+                raise BinanceGridTradingBotSetupException(err_msg)
         
-        self._requests_params: Dict[str, str] = {"timeout": 10}
+        self.requests_params = {"timeout": 10}
         if use_proxy:
             http_proxy = os.getenv("HTTP_PROXY")
             https_proxy = os.getenv("HTTPS_PROXY")
             if http_proxy is None or https_proxy is None:
-                _g_logger.critical("Please set env for HTTP_PROXY and HTTPS_PROXY.")
-                return
+                err_msg = "Please set env for HTTP_PROXY and HTTPS_PROXY."
+                _g_logger.critical(err_msg)
+                raise BinanceGridTradingBotSetupException(err_msg)
             proxies = {
                 "http": http_proxy,
                 "https": https_proxy
             }
-            self._requests_params[proxies] = proxies
+            self.requests_params[proxies] = proxies
 
     async def init(self) -> bool:
         api_aync_client = await AsyncClient.create(
-            api_key=self._ak,
-            api_secret=self._sk,
-            requests_params=self._requests_params,
+            api_key=self.ak,
+            api_secret=self.sk,
+            requests_params=self.requests_params,
             testnet=self._use_testnet,
         )
         self._sock_mgr = BinanceSocketManager(client=api_aync_client)
