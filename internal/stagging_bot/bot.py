@@ -10,7 +10,7 @@ from ..singleton import Singleton
 from binance.client import Client
 from binance.exceptions import BinanceAPIException
 from binance.exceptions import BinanceRequestException
-from typing import NoReturn
+from pprint import pprint
 from typing import Optional
 
 _g_logger = logging.getLogger("BinanceStaggingBot")
@@ -63,6 +63,7 @@ class BinanceStaggingBot(metaclass=Singleton):
             testnet=use_testnet,
         )
         self._is_inited = True
+        self._is_ready = False
     
     def is_ready(self) -> bool:
         '''
@@ -78,11 +79,56 @@ class BinanceStaggingBot(metaclass=Singleton):
             _g_logger.critical("BinanceStaggingBot is not ready, err:{}.".format(e))
             ready = False
         finally:
-            if ready and self._is_inited:
+            self._is_ready = ready and self._is_inited
+            if self._is_ready:
                 _g_logger.info("BinanceStaggingBot is ready.")
-            return ready and self._is_inited
+            return self._is_ready
 
-    def run(self, sym: Optional[str] = None, quantity: Optional[int] = None, new_arrival_time: Optional[int] = None, try_cnt: int = 5) -> NoReturn:
+    def show_balances(self):
+        '''
+        Show current balances.
+        '''
+        account = None
+        try:
+            account = self._api_client.get_account(
+                recvWindow=2000,
+            )
+        except BinanceRequestException as e:
+            _g_logger.error("Failed to get balances, err:{}.".format(e))
+        except BinanceAPIException as e:
+            _g_logger.error("Failed to get balances, err:{}.".format(e))
+        finally:
+            if account is not None:
+                _g_logger.debug("====================================================")
+                pprint("Balances:")
+                for balance in account["balances"]:
+                    pprint(balance, indent=4, depth=2)
+                _g_logger.debug("====================================================")
+
+    def show_recent_n_orders(self, sym: Optional[str] = None, limit: Optional[int] = None):
+        '''
+        Get recent n orders for a specific symbol.
+        '''
+        orders = None
+        try:
+            orders = self._api_client.get_all_orders(
+                symbol=sym,
+                limit=limit,
+                recvWindow=2000,
+            )
+        except BinanceRequestException as e:
+            _g_logger.error("Failed to get orders, err:{}.".format(e))
+        except BinanceAPIException as e:
+            _g_logger.error("Failed to get orders, err:{}.".format(e))
+        finally:
+            if orders is not None:
+                _g_logger.debug("====================================================")
+                pprint("Recent Orders:")
+                for order in orders:
+                    pprint(order, indent=4, depth=2)
+                _g_logger.debug("====================================================")
+
+    def trade(self, sym: Optional[str] = None, quantity: Optional[int] = None, new_arrival_time: Optional[int] = None, try_cnt: int = 5):
         '''
         Buy some quantities of a specific coin at particular time, like sym == PHABUSD
         '''
@@ -97,9 +143,10 @@ class BinanceStaggingBot(metaclass=Singleton):
                 self._api_client.order_market_buy(
                     symbol=sym,
                     quoteOrderQty=quantity,
-                    recvWindow=200,
+                    recvWindow=2000,
                 )
                 break
+                _g_logger.info("BinanceStaggingBot done")
             except Exception as e:
                 time.sleep(0.01)
                 cnt += 1

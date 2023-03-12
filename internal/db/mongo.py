@@ -58,6 +58,7 @@ class MongoClient(metaclass=Singleton):
                 password=client_conf["password"],
                 authSource="admin",
                 authMechanism=client_conf["auth_mechanism"],
+                serverSelectionTimeoutMS=2000,
                 socketTimeoutMS=5000,
                 connectTimeoutMS=2000,
                 io_loop=io_loop,
@@ -69,6 +70,7 @@ class MongoClient(metaclass=Singleton):
                 password=client_conf["password"],
                 authSource="admin",
                 authMechanism=client_conf["auth_mechanism"],
+                serverSelectionTimeoutMS=2000,
                 socketTimeoutMS=5000,
                 connectTimeoutMS=2000,
                 io_loop=io_loop,
@@ -91,8 +93,11 @@ class MongoClient(metaclass=Singleton):
         return valid
 
     async def is_connected(self):
-        result = await self._kline_db.command("ping")
-        _g_logger.debug(result)
+        try:
+            result = await self._kline_db.command("ping")
+            _g_logger.debug(result)
+        except perrors.ServerSelectionTimeoutError:
+            raise MongoClientSetupException("Please check connectivity with mongo server.")
 
     async def insert_kline(self, sym: Optional[str] = None, interval: Optional[str] = "1m", kline: Optional[Dict[str, Any]] = None) -> bool:
         done = False

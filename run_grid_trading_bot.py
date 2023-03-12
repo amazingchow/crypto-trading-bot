@@ -24,7 +24,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--conf",
         type=str,
-        default="./etc/bot.json",
+        default="./etc/grid_trading_bot.json",
         help="bot config file",
     )
     args = parser.parse_args()
@@ -40,6 +40,10 @@ if __name__ == "__main__":
     g_event_loop = asyncio.get_event_loop()
 
     bot = BinanceGridTradingBot(use_proxy=False, use_testnet=False)
+    bot.lower_range_price = 19000
+    bot.upper_range_price = 21000
+    bot.grids = 2000
+    bot.total_investment = 50000
     try:
         m_cli = MongoClient(
             client_conf=conf["mongodb"],

@@ -15,9 +15,11 @@ deps: ### Package the runtime requirements.
 
 .PHONY: lint
 lint: ### Lint code.
-	@pyflakes bot.py
+	@pyflakes run_grid_trading_bot.py
+	@pyflakes run_stagging_bot.py
 	@pyflakes internal/*/*.py
-	@pycodestyle bot.py --ignore=E402,E501,W293,E266
+	@pycodestyle run_grid_trading_bot.py --ignore=E402,E501,W293,E266
+	@pycodestyle run_stagging_bot.py --ignore=E402,E501,W293,E266
 	@pycodestyle internal/*/*.py --ignore=E402,E501,W293,E266
 
 .PHONY: infra_run
@@ -27,7 +29,3 @@ infra_run: ### Run the infra.
 .PHONY: infra_stop
 infra_stop: ### Shutdown the infra.
 	@(docker-compose -f "${CURRENT_DIR}/infra/infra_mongo.yml" down)
-
-.PHONY: ### Run code.
-run:
-	@python bot.py
