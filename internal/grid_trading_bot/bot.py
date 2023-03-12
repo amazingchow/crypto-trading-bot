@@ -1,24 +1,32 @@
 # -*- coding: utf-8 -*-
+import asyncio
 import coloredlogs
 import logging
-_g_logger = logging.getLogger("BinanceGridTradingBot")
-coloredlogs.install(level="DEBUG", logger=_g_logger, fmt="[%(asctime)s][%(levelname)s] %(message)s")
-
 import os
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+from ..db.mongo import MongoClient
+from ..singleton import Singleton
 from binance.client import AsyncClient
 from binance.streams import BinanceSocketManager
-from typing import Dict
+from typing import NoReturn
 from typing import Optional
+
+_g_logger = logging.getLogger("BinanceGridTradingBot")
+coloredlogs.install(
+    level="DEBUG",
+    logger=_g_logger,
+    fmt="[%(asctime)s][%(levelname)s][%(name)s] - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 
 class BinanceGridTradingBotSetupException(Exception):
     pass
 
 
-class BinanceGridTradingBot():
+class BinanceGridTradingBot(metaclass=Singleton):
     '''
     币安网格交易机器人
     '''
@@ -60,20 +68,36 @@ class BinanceGridTradingBot():
             }
             self.requests_params[proxies] = proxies
 
-    async def init(self) -> bool:
-        api_aync_client = await AsyncClient.create(
-            api_key=self.ak,
-            api_secret=self.sk,
-            requests_params=self.requests_params,
-            testnet=self._use_testnet,
-        )
+    async def setup(self, db: Optional[MongoClient] = None):
+        try:
+            api_aync_client = await AsyncClient.create(
+                api_key=self.ak,
+                api_secret=self.sk,
+                requests_params=self.requests_params,
+                testnet=self._use_testnet,
+            )
+        except asyncio.exceptions.TimeoutError:
+            raise BinanceGridTradingBotSetupException("Please check your http(s) proxy.")
         self._sock_mgr = BinanceSocketManager(client=api_aync_client)
+        self._store = db
+        self._kline_q = asyncio.Queue()
 
-    async def feed_kline(self, sym: Optional[str] = None, interval: Optional[str] = "1m"):
+    async def feed_klines(self, sym: Optional[str] = None, interval: Optional[str] = "1m") -> NoReturn:
         sock_client = self._sock_mgr.kline_socket(symbol=sym, interval=interval)
-        async with sock_client.connect() as sock:
-            while 1:
-                res = await sock.recv()
-                _g_logger.debug("====================================================")
-                _g_logger.debug(res)
-                _g_logger.debug("====================================================")
+        await sock_client.connect()
+        _g_logger.debug("Ready to receive k-lines<symbol:{}, interval:{}>...".format(sym, interval))
+        while 1:
+            res = await sock_client.recv()
+            _g_logger.debug("Received one k-line<symbol:{}, interval:{}>.".format(sym, interval))
+            _g_logger.debug("====================================================")
+            _g_logger.debug(res)
+            _g_logger.debug("====================================================")
+            self._kline_q.put_nowait({"symbol": res["s"], "st_timestamp": res["k"]["t"], "ed_timestamp": res["k"]["T"], "kline": res["k"]})
+
+    async def persist_klines(self, sym: Optional[str] = None, interval: Optional[str] = "1m") -> NoReturn:
+        _g_logger.debug("Ready to persist k-lines<symbol:{}, interval:{}>...".format(sym, interval))
+        while 1:
+            kline = await self._kline_q.get()
+            self._kline_q.task_done()
+            _g_logger.debug("Prepare to persist one k-line<symbol:{}, interval:{}>.".format(sym, interval))
+            await self._store.insert_kline(sym=sym, interval=interval, kline=kline)

@@ -3,6 +3,7 @@ export
 
 VERSION      := v1.0.0
 GIT_HASH     := $(shell git rev-parse --short HEAD)
+CURRENT_DIR  := $(shell pwd)
 
 .PHONY: help
 help: ### Display this help screen.
@@ -14,8 +15,18 @@ deps: ### Package the runtime requirements.
 
 .PHONY: lint
 lint: ### Lint code.
+	@pyflakes bot.py
 	@pyflakes internal/*/*.py
+	@pycodestyle bot.py --ignore=E402,E501,W293,E266
 	@pycodestyle internal/*/*.py --ignore=E402,E501,W293,E266
+
+.PHONY: infra_run
+infra_run: ### Run the infra.
+	@(docker-compose -f "${CURRENT_DIR}/infra/infra_mongo.yml" up -d --build)
+
+.PHONY: infra_stop
+infra_stop: ### Shutdown the infra.
+	@(docker-compose -f "${CURRENT_DIR}/infra/infra_mongo.yml" down)
 
 .PHONY: ### Run code.
 run:

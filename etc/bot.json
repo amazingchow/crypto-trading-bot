@@ -1,0 +1,12 @@
+{
+    "mongodb": {
+        "endpoint": "localhost:27017",
+        "username": "root",
+        "password": "aExc_NlfDrs_PXsL",
+        "auth_mechanism": "SCRAM-SHA-256",
+        "kline_store": {
+            "database": "binance",
+            "collection": "klines_1m_test"
+        }
+    }
+}

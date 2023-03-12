@@ -1,0 +1,19 @@
+version: "3.7"
+services:
+  mongo:
+    image: mongo:6.0.3
+    hostname: mongo
+    container_name: mongo-svc
+    ports:
+      - 27017:27017
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: aExc_NlfDrs_PXsL
+    volumes:
+      - ~/infra/mongo/data:/data/db
+    networks:
+      - default_infra_network
+
+networks:
+  default_infra_network:
+    external: true

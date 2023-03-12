@@ -1,21 +1,28 @@
 # -*- coding: utf-8 -*-
 import coloredlogs
 import logging
-_g_logger = logging.getLogger("BinanceStaggingBot")
-coloredlogs.install(level="DEBUG", logger=_g_logger, fmt="[%(asctime)s][%(levelname)s] %(message)s")
-
 import os
 import time
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+from ..singleton import Singleton
 from binance.client import Client
 from binance.exceptions import BinanceAPIException
 from binance.exceptions import BinanceRequestException
+from typing import NoReturn
 from typing import Optional
 
+_g_logger = logging.getLogger("BinanceStaggingBot")
+coloredlogs.install(
+    level="DEBUG",
+    logger=_g_logger,
+    fmt="[%(asctime)s][%(levelname)s][%(name)s] - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
-class BinanceStaggingBot():
+
+class BinanceStaggingBot(metaclass=Singleton):
     '''
     币安打新机器人
     '''
@@ -75,7 +82,7 @@ class BinanceStaggingBot():
                 _g_logger.info("BinanceStaggingBot is ready.")
             return ready and self._is_inited
 
-    def run(self, sym: Optional[str] = None, quantity: Optional[int] = None, new_arrival_time: Optional[int] = None, try_cnt: int = 5):
+    def run(self, sym: Optional[str] = None, quantity: Optional[int] = None, new_arrival_time: Optional[int] = None, try_cnt: int = 5) -> NoReturn:
         '''
         Buy some quantities of a specific coin at particular time, like sym == PHABUSD
         '''
