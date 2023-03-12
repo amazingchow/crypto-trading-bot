@@ -6,7 +6,7 @@
         "auth_mechanism": "SCRAM-SHA-256",
         "kline_store": {
             "database": "binance",
-            "collection": "klines_1m_test"
+            "collection": "testnet.klines_1m"
         }
     }
 }

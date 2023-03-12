@@ -39,19 +39,25 @@ if __name__ == "__main__":
 
     g_event_loop = asyncio.get_event_loop()
 
-    bot = BinanceGridTradingBot(use_proxy=False, use_testnet=False)
+    bot = BinanceGridTradingBot(use_proxy=False, use_testnet=True)
     bot.lower_range_price = 19000
     bot.upper_range_price = 21000
     bot.grids = 2000
-    bot.total_investment = 50000
+    bot.total_investment = 5000
     try:
         m_cli = MongoClient(
             client_conf=conf["mongodb"],
             io_loop=g_event_loop
         )
-        coro = m_cli.is_connected()
-        g_event_loop.run_until_complete(coro)
+        task = asyncio.ensure_future(m_cli.is_connected())
+        g_event_loop.run_until_complete(task)
+        connected = task.result()
+        if not connected:
+            main_logger.error("Please check connectivity with mongo server.")
+            sys.exit(-1)
         coro = bot.setup(db=m_cli)
+        g_event_loop.run_until_complete(coro)
+        coro = bot.show_balances()
         g_event_loop.run_until_complete(coro)
     except Exception as e:
         main_logger.error(e)
@@ -60,7 +66,8 @@ if __name__ == "__main__":
     try:
         task_1 = asyncio.ensure_future(bot.feed_klines("BTCUSDT", "1m"))
         task_2 = asyncio.ensure_future(bot.persist_klines("BTCUSDT", "1m"))
-        tasks = [task_1, task_2]
+        task_3 = asyncio.ensure_future(bot.trade("BTCUSDT"))
+        tasks = [task_1, task_2, task_3]
         g_event_loop.run_until_complete(asyncio.gather(*tasks))
     except Exception as e:
         main_logger.error(e)

@@ -9,7 +9,10 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from ..db.mongo import MongoClient
 from ..singleton import Singleton
 from binance.client import AsyncClient
+from binance.exceptions import BinanceAPIException
+from binance.exceptions import BinanceRequestException
 from binance.streams import BinanceSocketManager
+from pprint import pprint
 from typing import NoReturn
 from typing import Optional
 
@@ -118,9 +121,31 @@ class BinanceGridTradingBot(metaclass=Singleton):
             )
         except asyncio.exceptions.TimeoutError:
             raise BinanceGridTradingBotSetupException("Please check your http(s) proxy.")
+        self._api_aync_client = api_aync_client
         self._sock_mgr = BinanceSocketManager(client=api_aync_client)
         self._store = db
         self._kline_q = asyncio.Queue()
+
+    async def show_balances(self):
+        '''
+        Show current balances.
+        '''
+        account = None
+        try:
+            account = await self._api_aync_client.get_account(
+                recvWindow=2000,
+            )
+        except BinanceRequestException as e:
+            _g_logger.error("Failed to get balances, err:{}.".format(e))
+        except BinanceAPIException as e:
+            _g_logger.error("Failed to get balances, err:{}.".format(e))
+        finally:
+            if account is not None:
+                _g_logger.debug("====================================================")
+                pprint("Balances:")
+                for balance in account["balances"]:
+                    pprint(balance, indent=4, depth=2)
+                _g_logger.debug("====================================================")
 
     async def feed_klines(self, sym: Optional[str] = None, interval: Optional[str] = "1m") -> NoReturn:
         sock_client = self._sock_mgr.kline_socket(symbol=sym, interval=interval)
@@ -141,3 +166,42 @@ class BinanceGridTradingBot(metaclass=Singleton):
             self._kline_q.task_done()
             _g_logger.debug("Prepare to persist one k-line<symbol:{}, interval:{}>.".format(sym, interval))
             await self._store.insert_kline(sym=sym, interval=interval, kline=kline)
+
+    async def trade(self, sym: Optional[str] = None):
+        _g_logger.debug("Ready to run grid trading for symbol:{}...".format(sym))
+
+        spread = (self._upper_range_price - self._lower_range_price) // self._grids
+        trading_capacity = self._total_investment // self._grids
+        trading_price_list = [self._lower_range_price + i * spread for i in range(self._grids)]
+
+        latest_price = None
+        try:
+            res = await self._api_aync_client.get_symbol_ticker(
+                symbol=sym,
+            )
+            latest_price = float(res["price"])
+        except BinanceRequestException as e:
+            _g_logger.error("Failed to get latest price for symbol:{}, err:{}.".format(sym, e))
+        except BinanceAPIException as e:
+            _g_logger.error("Failed to get latest price for symbol:{}, err:{}.".format(sym, e))
+        finally:
+            if latest_price is None:
+                _g_logger.error("Failed to get latest price for symbol:{}.".format(sym))
+                return
+        
+        _g_logger.debug("Latest price for symbol:{} is {}".format(sym, latest_price))
+        initial_tokens_spent = int((self._upper_range_price - latest_price) / (self._upper_range_price - self._lower_range_price) * self._total_investment)
+        try:
+            res = await self._api_aync_client.create_order(
+                symbol=sym,
+                side="BUY",
+                type="MARKET",
+                quoteOrderQty=initial_tokens_spent,
+                newOrderRespType="RESULT",
+                recvWindow=2000,
+            )
+            _g_logger.info(res)
+        except BinanceRequestException as e:
+            _g_logger.error("Failed to get create order for symbol:{}, err:{}.".format(sym, e))
+        except BinanceAPIException as e:
+            _g_logger.error("Failed to get create order for symbol:{}, err:{}.".format(sym, e))

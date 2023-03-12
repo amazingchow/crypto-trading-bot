@@ -92,12 +92,15 @@ class MongoClient(metaclass=Singleton):
             valid = False
         return valid
 
-    async def is_connected(self):
+    async def is_connected(self) -> bool:
+        connected = False
         try:
-            result = await self._kline_db.command("ping")
-            _g_logger.debug(result)
+            res = await self._kline_db.command("ping")
+            connected = res["ok"] == 1.0
         except perrors.ServerSelectionTimeoutError:
             raise MongoClientSetupException("Please check connectivity with mongo server.")
+        finally:
+            return connected
 
     async def insert_kline(self, sym: Optional[str] = None, interval: Optional[str] = "1m", kline: Optional[Dict[str, Any]] = None) -> bool:
         done = False
