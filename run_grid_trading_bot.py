@@ -40,9 +40,9 @@ if __name__ == "__main__":
     g_event_loop = asyncio.get_event_loop()
 
     bot = BinanceGridTradingBot(use_proxy=False, use_testnet=True)
-    bot.lower_range_price = 19000
-    bot.upper_range_price = 21000
-    bot.grids = 2000
+    bot.lower_range_price = 23000
+    bot.upper_range_price = 25000
+    bot.grids = 500
     bot.total_investment = 5000
     try:
         m_cli = MongoClient(
@@ -63,11 +63,18 @@ if __name__ == "__main__":
         main_logger.error(e)
         sys.exit(-1)
 
+    # task = asyncio.ensure_future(bot.swap_2_usdt("BNBUSDT", 100.0))
+    # g_event_loop.run_until_complete(task)
+    # done = task.result()
+    # if not done:
+    #     main_logger.error("Please check your balance.")
+    #     sys.exit(-1)
+    # coro = bot.show_balances()
+    # g_event_loop.run_until_complete(coro)
+
     try:
-        task_1 = asyncio.ensure_future(bot.feed_klines("BTCUSDT", "1m"))
-        task_2 = asyncio.ensure_future(bot.persist_klines("BTCUSDT", "1m"))
-        task_3 = asyncio.ensure_future(bot.trade("BTCUSDT"))
-        tasks = [task_1, task_2, task_3]
+        task = asyncio.ensure_future(bot.trade("BTCUSDT"))
+        tasks = [task]
         g_event_loop.run_until_complete(asyncio.gather(*tasks))
     except Exception as e:
         main_logger.error(e)
