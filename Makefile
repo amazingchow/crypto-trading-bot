@@ -1,9 +1,10 @@
 include .env
 export
 
-VERSION      := v1.0.0
-GIT_HASH     := $(shell git rev-parse --short HEAD)
-CURRENT_DIR  := $(shell pwd)
+VERSION  := v1.0.0
+GIT_HASH := $(shell git rev-parse --short HEAD)
+SERVICE  := crypto-trading-bot
+CURR_DIR := $(shell pwd)
 
 .PHONY: help
 help: ### Display this help screen.
@@ -13,19 +14,23 @@ help: ### Display this help screen.
 deps: ### Package the runtime requirements.
 	@pip freeze > requirements.txt
 
+.PHONY: yaml_fmt
+yaml_fmt:
+	@yamlfmt docker-compose.yml
+
 .PHONY: lint
 lint: ### Lint code.
 	@pyflakes run_grid_trading_bot.py
 	@pyflakes run_stagging_bot.py
 	@pyflakes internal/*/*.py
-	@pycodestyle run_grid_trading_bot.py --ignore=E402,E501,W293,E266
-	@pycodestyle run_stagging_bot.py --ignore=E402,E501,W293,E266
-	@pycodestyle internal/*/*.py --ignore=E402,E501,W293,E266
+	@pycodestyle run_grid_trading_bot.py --ignore=W293,W503,E266,E402,E501
+	@pycodestyle run_stagging_bot.py --ignore=W293,W503,E266,E402,E501
+	@pycodestyle internal/*/*.py --ignore=W293,W503,E266,E402,E501
 
-.PHONY: infra_run
-infra_run: ### Run the infra.
-	@(docker-compose -f "${CURRENT_DIR}/infra/infra_mongo.yml" up -d --build)
+.PHONY: run_compose
+run_compose:
+	@(docker-compose -f "${CURR_DIR}/docker-compose.yml" up -d --build)
 
-.PHONY: infra_stop
-infra_stop: ### Shutdown the infra.
-	@(docker-compose -f "${CURRENT_DIR}/infra/infra_mongo.yml" down)
+.PHONY: shutdown_compose
+shutdown_compose:
+	@(docker-compose -f "${CURR_DIR}/docker-compose.yml" down)

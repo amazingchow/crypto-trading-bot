@@ -1,153 +1,180 @@
 # -*- coding: utf-8 -*-
-import coloredlogs
-import logging
+import asyncio
 import os
+import pprint
 import time
-import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-from ..singleton import Singleton
-from binance.client import Client
-from binance.exceptions import BinanceAPIException
-from binance.exceptions import BinanceRequestException
-from pprint import pprint
-from typing import Optional
-
-_g_logger = logging.getLogger("BinanceStaggingBot")
-coloredlogs.install(
-    level="DEBUG",
-    logger=_g_logger,
-    fmt="[%(asctime)s][%(levelname)s][%(name)s] - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
+from binance.client import AsyncClient as AsyncBinanceRestAPIClient
+from binance.client import Client as BinanceRestAPIClient
+from binance.exceptions import BinanceAPIException, BinanceRequestException, BinanceOrderException
+from colorama import Fore, Style
+from internal.db import instance as db_instance
+from internal.singleton import Singleton
+from internal.utils.helper import gen_n_digit_nums_and_letters
+from loguru import logger as loguru_logger
 
 
 class BinanceStaggingBot(metaclass=Singleton):
-    '''
+    """
     币安打新机器人
-    '''
-    def __init__(self, use_proxy: Optional[bool] = False, use_testnet: Optional[bool] = False):
-        self._is_inited = False
+    """
+    
+    def __init__(self, use_proxy: bool = False, use_testnet: bool = False):
+        self._inited = False
+        self._is_ready = False
+        self._aclient = None
+        self._client = None
 
         ak, sk = None, None
         if use_testnet:
             ak = os.getenv("BINANCE_TESTNET_API_KEY")
             sk = os.getenv("BINANCE_TESTNET_SECRET_KEY")
-            if ak is None or sk is None:
-                _g_logger.critical("Please set env for BINANCE_TESTNET_API_KEY and BINANCE_TESTNET_SECRET_KEY.")
+            if (ak is None or len(ak) == 0) or (sk is None or len(sk) == 0):
+                loguru_logger.critical("Please set env for BINANCE_TESTNET_API_KEY and BINANCE_TESTNET_SECRET_KEY.")
                 return
         else:
             ak = os.getenv("BINANCE_MAINNET_API_KEY")
             sk = os.getenv("BINANCE_MAINNET_SECRET_KEY")
-            if ak is None or sk is None:
-                _g_logger.critical("Please set env for BINANCE_MAINNET_API_KEY and BINANCE_MAINNET_SECRET_KEY.")
+            if (ak is None or len(ak) == 0) or (sk is None or len(sk) == 0):
+                loguru_logger.critical("Please set env for BINANCE_MAINNET_API_KEY and BINANCE_MAINNET_SECRET_KEY.")
                 return
         
         requests_params = {"verify": False, "timeout": 10}
         if use_proxy:
             http_proxy = os.getenv("HTTP_PROXY")
             https_proxy = os.getenv("HTTPS_PROXY")
-            if http_proxy is None or https_proxy is None:
-                _g_logger.critical("Please set env for HTTP_PROXY and HTTPS_PROXY.")
+            if (http_proxy is None or len(http_proxy) == 0) or (https_proxy is None or len(https_proxy) == 0):
+                loguru_logger.critical("Please set env for HTTP_PROXY and HTTPS_PROXY.")
                 return
             proxies = {
                 "http": http_proxy,
                 "https": https_proxy
             }
             requests_params[proxies] = proxies
-
-        self._api_client = Client(
+        self._client = BinanceRestAPIClient(
             api_key=ak,
             api_secret=sk,
             requests_params=requests_params,
             testnet=use_testnet,
         )
-        self._is_inited = True
-        self._is_ready = False
+
+        requests_params = {"timeout": 10}
+        if use_proxy:
+            http_proxy = os.getenv("HTTP_PROXY")
+            https_proxy = os.getenv("HTTPS_PROXY")
+            if (http_proxy is None or len(http_proxy) == 0) or (https_proxy is None or len(https_proxy) == 0):
+                loguru_logger.critical("Please set env for HTTP_PROXY and HTTPS_PROXY.")
+                return
+            proxies = {
+                "http": http_proxy,
+                "https": https_proxy
+            }
+            requests_params[proxies] = proxies
+        self._aclient = AsyncBinanceRestAPIClient(
+            api_key=ak,
+            api_secret=sk,
+            requests_params=requests_params,
+            testnet=use_testnet,
+        )
+
+        self._inited = True
     
-    def is_ready(self) -> bool:
-        '''
-        Test connectivity to the Rest API.
-        '''
-        ready = True
+    async def is_ready(self) -> bool:
+        """Test connectivity to the Binance Rest API."""
+        if not self._inited:
+            return False
+
         try:
-            self._api_client.ping()
-        except BinanceRequestException as e:
-            _g_logger.critical("BinanceStaggingBot is not ready, err:{}.".format(e))
-            ready = False
-        except BinanceAPIException as e:
-            _g_logger.critical("BinanceStaggingBot is not ready, err:{}.".format(e))
-            ready = False
+            await self._aclient.ping()
+            res = await self._aclient.get_server_time()
+            self._is_ready = True
+        except (BinanceRequestException, BinanceAPIException) as e:
+            loguru_logger.critical(f"BinanceStaggingBot is not ready, binance's exception:{e}.")
+        except Exception as e:
+            loguru_logger.critical(f"BinanceStaggingBot is not ready, internal exception:{e}.")
         finally:
-            self._is_ready = ready and self._is_inited
             if self._is_ready:
-                _g_logger.info("BinanceStaggingBot is ready.")
+                timestamp_offset = res["serverTime"] - int(time.time() * 1000)
+                loguru_logger.info(f"BinanceStaggingBot is ready for operations, timestamp offset from binance server: {timestamp_offset}.")
             return self._is_ready
 
-    def show_balances(self):
-        '''
-        Show current balances.
-        '''
+    async def close(self):
+        if self._aclient is not None:
+            await self._aclient.close_connection()
+        if self._client is not None:
+            self._client.close_connection()
+
+    async def show_balances(self):
+        """Show current balances."""
         account = None
         try:
-            account = self._api_client.get_account(
-                recvWindow=2000,
-            )
-        except BinanceRequestException as e:
-            _g_logger.error("Failed to get balances, err:{}.".format(e))
-        except BinanceAPIException as e:
-            _g_logger.error("Failed to get balances, err:{}.".format(e))
+            account = await self._aclient.get_account(recvWindow=5000)
+        except (BinanceRequestException, BinanceAPIException) as e:
+            loguru_logger.error(f"Failed to get balances, binance's exception:{e}.")
+        except Exception as e:
+            loguru_logger.error(f"Failed to get balances, internal exception:{e}.")
         finally:
             if account is not None:
-                _g_logger.debug("====================================================")
-                pprint("Balances:")
+                print(f"{Fore.GREEN} ======================================= BALANCES ======================================= {Style.RESET_ALL}")
                 for balance in account["balances"]:
-                    pprint(balance, indent=4, depth=2)
-                _g_logger.debug("====================================================")
+                    if balance["asset"] in ["BTC", "ETH", "USDT", "BUSD"]:
+                        print(f"{Fore.CYAN}{pprint.pformat(balance, indent=1, depth=1, compact=True)}{Style.RESET_ALL}")
+                print(f"{Fore.GREEN} ======================================= BALANCES ======================================= {Style.RESET_ALL}")
 
-    def show_recent_n_orders(self, sym: Optional[str] = None, limit: Optional[int] = None):
-        '''
-        Get recent n orders for a specific symbol.
-        '''
+    async def show_recent_n_orders(self, sym: str, n: int = 1):
+        """Get recent n orders (include active, canceled, or filled) for a specific symbol."""
         orders = None
         try:
-            orders = self._api_client.get_all_orders(
+            orders = await self._aclient.get_all_orders(
                 symbol=sym,
-                limit=limit,
-                recvWindow=2000,
+                limit=n,
+                recvWindow=5000,
             )
-        except BinanceRequestException as e:
-            _g_logger.error("Failed to get orders, err:{}.".format(e))
-        except BinanceAPIException as e:
-            _g_logger.error("Failed to get orders, err:{}.".format(e))
+        except (BinanceRequestException, BinanceAPIException) as e:
+            loguru_logger.error(f"Failed to get recent {n} orders, binance's exception:{e}.")
+        except Exception as e:
+            loguru_logger.error(f"Failed to get recent {n} orders, internal exception:{e}.")
         finally:
             if orders is not None:
-                _g_logger.debug("====================================================")
-                pprint("Recent Orders:")
+                print(f"{Fore.GREEN} ======================================= RECENT N ORDERS ======================================= {Style.RESET_ALL}")
                 for order in orders:
-                    pprint(order, indent=4, depth=2)
-                _g_logger.debug("====================================================")
+                    print(f"{Fore.CYAN}{pprint.pformat(order, indent=1, depth=1, compact=True)}{Style.RESET_ALL}")
+                print(f"{Fore.GREEN} ======================================= RECENT N ORDERS ======================================= {Style.RESET_ALL}")
 
-    def trade(self, sym: Optional[str] = None, quantity: Optional[int] = None, new_arrival_time: Optional[int] = None, try_cnt: int = 5):
-        '''
-        Buy some quantities of a specific coin at particular time, like sym == PHABUSD
-        '''
+    async def trade(self, sym: str, quantity: int, when: int, side: str = "BUY", retry_cnt: int = 5):
+        """Buy some quantities of a specific coin at particular time."""
         now = time.time()
-        while now < new_arrival_time:
-            time.sleep(0.001)
+        while now < when:
+            await asyncio.sleep(0.001)
             now = time.time()
 
-        cnt = 0
-        while cnt < try_cnt:
+        retries = 0
+        done = False
+        order_id = gen_n_digit_nums_and_letters(22)
+        while retries < retry_cnt:
             try:
-                self._api_client.order_market_buy(
-                    symbol=sym,
-                    quoteOrderQty=quantity,
-                    recvWindow=2000,
-                )
-                break
-                _g_logger.info("BinanceStaggingBot done")
+                loguru_logger.info(f"Try to trade new order<order_id:{order_id}>...")
+                if side == "BUY":
+                    self._client.order_market_buy
+                    resp = await self._aclient.order_market_buy(
+                        symbol=sym,
+                        quoteOrderQty=quantity,
+                        newClientOrderId=order_id,
+                        recvWindow=2000,
+                    )
+                loguru_logger.info(f"Traded new order<order_id:{order_id}>.")
+                print(f"{Fore.GREEN} ======================================= NEW ORDER ======================================= {Style.RESET_ALL}")
+                print(f"{Fore.CYAN}{pprint.pformat(resp, indent=1, depth=1, compact=True)}{Style.RESET_ALL}")
+                print(f"{Fore.GREEN} ======================================= NEW ORDER ======================================= {Style.RESET_ALL}")
+                await db_instance().add_new_market_order(order=resp)
+                done = True
+            except (BinanceRequestException, BinanceAPIException, BinanceOrderException) as e:
+                loguru_logger.error(f"Failed to trade new order<order_id:{order_id}>, binance's exception:{e}.")
+                await asyncio.sleep(0.001)
+                retries += 1
             except Exception as e:
-                time.sleep(0.01)
-                cnt += 1
-                _g_logger.error("BinanceStaggingBot failed, err:{}".format(e))
+                loguru_logger.error(f"Failed to trade new order<order_id:{order_id}>, internal exception:{e}.")
+                done = True
+            finally:
+                if done:
+                    break

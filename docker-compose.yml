@@ -1,0 +1,15 @@
+version: "3.7"
+services:
+  mongodb:
+    image: bitnami/mongodb:6.0
+    container_name: mongodb-svc
+    ports:
+      - 27017:27017
+    restart: always
+    user: root
+    environment:
+      MONGODB_ROOT_USER: root
+      MONGODB_ROOT_PASSWORD: aExc_NlfDrs_PXsL
+    volumes:
+      - ~/infra/mongodb/data:/bitnami/mongodb
+    network_mode: host
