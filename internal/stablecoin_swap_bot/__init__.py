@@ -14,7 +14,7 @@ from internal.utils.helper import gen_n_digit_nums_and_letters
 from loguru import logger as loguru_logger
 
 
-class BinanceStaggingBot(metaclass=Singleton):
+class BinanceStablecoinSwapBot(metaclass=Singleton):
     """
     币安打新机器人
     """
@@ -89,13 +89,13 @@ class BinanceStaggingBot(metaclass=Singleton):
             res = await self._aclient.get_server_time()
             self._is_ready = True
         except (BinanceRequestException, BinanceAPIException) as e:
-            loguru_logger.critical(f"BinanceStaggingBot is not ready, binance's exception:{e}.")
+            loguru_logger.critical(f"BinanceStablecoinSwapBot is not ready, binance's exception:{e}.")
         except Exception as e:
-            loguru_logger.critical(f"BinanceStaggingBot is not ready, internal exception:{e}.")
+            loguru_logger.critical(f"BinanceStablecoinSwapBot is not ready, internal exception:{e}.")
         finally:
             if self._is_ready:
                 timestamp_offset = res["serverTime"] - int(time.time() * 1000)
-                loguru_logger.info(f"BinanceStaggingBot is ready for operations, timestamp offset from binance server: {timestamp_offset}.")
+                loguru_logger.info(f"BinanceStablecoinSwapBot is ready for operations, timestamp offset from binance server: {timestamp_offset}.")
             return self._is_ready
 
     async def close(self):
