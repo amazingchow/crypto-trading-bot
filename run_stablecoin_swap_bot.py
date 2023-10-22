@@ -34,11 +34,11 @@ def parse_args():
     parser.add_argument(
         "--conf",
         type=str,
-        default="./etc/stagging_bot.json",
+        default="./etc/stablecoin_swap_bot.json",
         help="the bot config file",
     )
     subparsers = parser.add_subparsers(
-        title="BINANCE_STAGGING_BOT",
+        title="BINANCE_STABLECOIN_SWAP_BOT",
         dest="action",
         help="action to perform"
     )
@@ -46,47 +46,28 @@ def parse_args():
     _ = balances_parser
     orders_parser = subparsers.add_parser("orders")
     orders_parser.add_argument(
-        "--symbol",
-        type=str,
-        help="coin symbol, like BTCUSDT",
-        required=True,
-    )
-    orders_parser.add_argument(
         "--limit",
         type=int,
         default=1,
-        help="recent N orders",
+        help="recent N BUSDUSDT swap orders",
     )
-    trade_parser = subparsers.add_parser("trade")
-    trade_parser.add_argument(
-        "--symbol",
-        type=str,
-        help="coin symbol, like BTCUSDT",
-        required=True,
-    )
-    trade_parser.add_argument(
-        "--side",
-        type=str,
-        default="BUY",
-        choices=["BUY"],
-        help="action to trade: BUY",
-        required=True,
-    )
-    trade_parser.add_argument(
-        "--quantity",
-        type=int,
-        help="the amount the user wants to spend of the quote asset",
-        required=True,
-    )
-    trade_parser.add_argument(
+    swap_parser = subparsers.add_parser("swap")
+    swap_parser.add_argument(
         "--when",
         type=int,
-        help="the absolute unix timestamp when user want to trade",
+        help="the absolute unix timestamp when you want to start stablecoin-swap",
     )
-    trade_parser.add_argument(
+    swap_parser.add_argument(
         "--elapse",
         type=int,
-        help="the relative unix timestamp when user want to trade",
+        help="the relative unix timestamp when you want to start stablecoin-swap",
+    )
+    cancel_order_parser = subparsers.add_parser("cancel")
+    cancel_order_parser.add_argument(
+        "--order_id",
+        type=str,
+        help="the unique order id",
+        required=True,
     )
 
     args = parser.parse_args()
@@ -95,7 +76,7 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    if args.action not in ["balances", "orders", "swap"]:
+    if args.action not in ["balances", "orders", "swap", "cancel"]:
         loguru_logger(f"Unknown action: {args.action}")
     action = args.action
     
@@ -116,12 +97,9 @@ if __name__ == "__main__":
                 task = asyncio.ensure_future(bot.show_balances())
                 loop.run_until_complete(task)
             elif action == "orders":
-                if len(args.symbol) > 0:
-                    task = asyncio.ensure_future(bot.show_recent_n_orders(sym=args.symbol, n=args.limit))
-                    loop.run_until_complete(task)
-                else:
-                    loguru_logger(f"Invalid action: {action}")
-            elif action == "trade":
+                task = asyncio.ensure_future(bot.show_recent_n_orders(n=args.limit))
+                loop.run_until_complete(task)
+            elif action == "swap":
                 # Setup mongodb connection (pool).
                 try:
                     init_db_instance(
@@ -146,24 +124,24 @@ if __name__ == "__main__":
                     loguru_logger.error("Cannot setup mongodb connection (pool).")
                     sys.exit(-1)
 
-                if len(args.symbol) > 0:
-                    if args.when is not None and args.when > 0:
-                        task = asyncio.ensure_future(bot.trade(sym=args.symbol, quantity=args.quantity, when=args.when, side=args.side))
-                        loop.run_until_complete(task)
-                    elif args.elapse is not None and args.elapse > 0:
-                        task = asyncio.ensure_future(bot.trade(sym=args.symbol, quantity=args.quantity, when=int(time.time()) + args.elapse, side=args.side))
-                        loop.run_until_complete(task)
-                    else:
-                        loguru_logger(f"Invalid action: {action}")
+                if args.when is not None and args.when > 0:
+                    task = asyncio.ensure_future(bot.swap(when=args.when))
+                    loop.run_until_complete(task)
+                elif args.elapse is not None and args.elapse > 0:
+                    task = asyncio.ensure_future(bot.swap(when=int(time.time()) + args.elapse))
+                    loop.run_until_complete(task)
                 else:
                     loguru_logger(f"Invalid action: {action}")
+            elif action == "cancel":
+                task = asyncio.ensure_future(bot.cancel_order(order_id=args.order_id))
+                loop.run_until_complete(task)
     except Exception:
         traceback.print_exc()
     finally:
         tasks = []
         if _cleanup_coroutine is not None:
             tasks.append(asyncio.ensure_future(_cleanup_coroutine()))
-        if action == "trade":
+        if action == "swap":
             # Release mongodb connection (pool).
             db_instance().close()
         # NOTE: Wait 250 ms for the underlying connections to close.

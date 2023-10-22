@@ -1,8 +1,31 @@
 # -*- coding: utf-8 -*-
+import asyncio
 import hashlib
 import random
 import sys
 import time
+
+from functools import wraps
+from loguru import logger as loguru_logger
+
+
+def timeit(func):
+
+    async def process(func, *args, **kwargs):
+        if asyncio.iscoroutinefunction(func):
+            return await func(*args, **kwargs)
+        else:
+            return func(*args, **kwargs)
+
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        st = time.time()
+        result = await process(func, *args, **kwargs)
+        ed = time.time()
+        loguru_logger.debug(f"{func.__name__} took time: {ed - st:.3f} secs")
+        return result
+
+    return wrapper
 
 
 def async_wrapper(func):

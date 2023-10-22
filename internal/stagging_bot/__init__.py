@@ -10,7 +10,7 @@ from binance.exceptions import BinanceAPIException, BinanceRequestException, Bin
 from colorama import Fore, Style
 from internal.db import instance as db_instance
 from internal.singleton import Singleton
-from internal.utils.helper import gen_n_digit_nums_and_letters
+from internal.utils.helper import timeit, gen_n_digit_nums_and_letters
 from loguru import logger as loguru_logger
 
 
@@ -104,6 +104,7 @@ class BinanceStaggingBot(metaclass=Singleton):
         if self._client is not None:
             self._client.close_connection()
 
+    @timeit
     async def show_balances(self):
         """Show current balances."""
         account = None
@@ -121,6 +122,7 @@ class BinanceStaggingBot(metaclass=Singleton):
                         print(f"{Fore.CYAN}{pprint.pformat(balance, indent=1, depth=1, compact=True)}{Style.RESET_ALL}")
                 print(f"{Fore.GREEN} ======================================= BALANCES ======================================= {Style.RESET_ALL}")
 
+    @timeit
     async def show_recent_n_orders(self, sym: str, n: int = 1):
         """Get recent n orders (include active, canceled, or filled) for a specific symbol."""
         orders = None
@@ -141,21 +143,21 @@ class BinanceStaggingBot(metaclass=Singleton):
                     print(f"{Fore.CYAN}{pprint.pformat(order, indent=1, depth=1, compact=True)}{Style.RESET_ALL}")
                 print(f"{Fore.GREEN} ======================================= RECENT N ORDERS ======================================= {Style.RESET_ALL}")
 
-    async def trade(self, sym: str, quantity: int, when: int, side: str = "BUY", retry_cnt: int = 5):
+    @timeit
+    async def trade(self, sym: str, quantity: int, when: int, side: str = "BUY", retry_cnt: int = 5) -> bool:
         """Buy some quantities of a specific coin at particular time."""
         now = time.time()
         while now < when:
             await asyncio.sleep(0.001)
             now = time.time()
 
-        retries = 0
         done = False
+        retries = 0
         order_id = gen_n_digit_nums_and_letters(22)
         while retries < retry_cnt:
             try:
-                loguru_logger.info(f"Try to trade new order<order_id:{order_id}>...")
+                loguru_logger.info(f"Try to trade a new order<order_id:{order_id}>...")
                 if side == "BUY":
-                    self._client.order_market_buy
                     resp = await self._aclient.order_market_buy(
                         symbol=sym,
                         quoteOrderQty=quantity,
@@ -166,7 +168,7 @@ class BinanceStaggingBot(metaclass=Singleton):
                 print(f"{Fore.GREEN} ======================================= NEW ORDER ======================================= {Style.RESET_ALL}")
                 print(f"{Fore.CYAN}{pprint.pformat(resp, indent=1, depth=1, compact=True)}{Style.RESET_ALL}")
                 print(f"{Fore.GREEN} ======================================= NEW ORDER ======================================= {Style.RESET_ALL}")
-                await db_instance().add_new_market_order(order=resp)
+                await db_instance().add_new_spot_market_order(order=resp)
                 done = True
             except (BinanceRequestException, BinanceAPIException, BinanceOrderException) as e:
                 loguru_logger.error(f"Failed to trade new order<order_id:{order_id}>, binance's exception:{e}.")
@@ -174,7 +176,9 @@ class BinanceStaggingBot(metaclass=Singleton):
                 retries += 1
             except Exception as e:
                 loguru_logger.error(f"Failed to trade new order<order_id:{order_id}>, internal exception:{e}.")
-                done = True
+                retries = retry_cnt
             finally:
                 if done:
                     break
+        
+        return done

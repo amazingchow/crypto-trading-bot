@@ -75,18 +75,18 @@ def parse_args():
     trade_parser.add_argument(
         "--quantity",
         type=int,
-        help="the amount the user wants to spend of the quote asset",
+        help="the amount you wants to spend of the quote asset",
         required=True,
     )
     trade_parser.add_argument(
         "--when",
         type=int,
-        help="the absolute unix timestamp when user want to trade",
+        help="the absolute unix timestamp when you want to trade",
     )
     trade_parser.add_argument(
         "--elapse",
         type=int,
-        help="the relative unix timestamp when user want to trade",
+        help="the relative unix timestamp when you want to trade",
     )
 
     args = parser.parse_args()
