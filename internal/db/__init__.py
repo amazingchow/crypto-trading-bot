@@ -2,6 +2,7 @@
 import asyncio
 import jsonschema
 import logging
+import pymongo
 import pymongo.errors as perrors
 import time
 
@@ -92,14 +93,7 @@ class MongoClient(metaclass=Singleton):
                 socketTimeoutMS=5000,
                 connectTimeoutMS=2000,
             )
-
-        self._db = self._client[client_conf["database"]]
-        try:
-            self._store = self._db[client_conf["collection"]]
-            self._store.create_index("clientOrderId", unique=True)
-            self._store.create_index("updateTime", unique=False)
-        except perrors.DuplicateKeyError:
-            pass
+        self._conf = client_conf
 
     def _validate_config(self, conf: Optional[Dict[str, Any]] = None) -> bool:
         valid = False
@@ -114,22 +108,36 @@ class MongoClient(metaclass=Singleton):
     async def is_connected(self) -> bool:
         connected = False
         try:
+            self._db = self._client[self._conf["database"]]
             res = await self._db.command("ping")
             connected = res["ok"] == 1.0
+            if connected:
+                try:
+                    self._store = self._db[self._conf["collection"]]
+                    for index in self._conf["indexes"]:
+                        if index["direction"] == 1:
+                            self._store.create_index(
+                                index["name"], pymongo.ASCENDING, unique=index["unique"], background=True, sparse=False
+                            )
+                        elif index["direction"] == -1:
+                            self._store.create_index(
+                                index["name"], pymongo.DESCENDING, unique=index["unique"], background=True, sparse=False
+                            )
+                except perrors.DuplicateKeyError:
+                    pass
         except perrors.ServerSelectionTimeoutError:
-            raise MongoClientSetupException("Please check connectivity with mongo server.")
+            loguru_logger.error("Please check connectivity with mongodb server.")
         finally:
             return connected
 
     @retry_decorator
-    async def add_new_market_order(self, order: Dict[str, Any]) -> bool:
+    async def add_new_spot_market_order(self, order: Dict[str, Any]) -> bool:
         done = False
         try:
             query = {"clientOrderId": order["clientOrderId"]}
             update_ts = int(time.time())
             update = {"$set": {
                 "clientOrderId": order["clientOrderId"],
-                "cummulativeQuoteQty": order["cummulativeQuoteQty"],
                 "orderId": order["orderId"],
                 "origQty": order["origQty"],
                 "price": order["price"],
@@ -138,17 +146,43 @@ class MongoClient(metaclass=Singleton):
                 "symbol": order["symbol"],
                 "timeInForce": order["timeInForce"],
                 "transactTime": order["transactTime"],
-                "type": order["type"],
-                "workingTime": order["workingTime"],
                 "updateTime": update_ts,
             }}
             await self._store.update_one(query, update, upsert=True)
-            loguru_logger.debug(f"Added new market order:{order['clientOrderId']}.")
+            loguru_logger.debug(f"Added a new spot-market-order:{order['clientOrderId']}.")
             done = True
         except perrors.NetworkTimeout:
-            loguru_logger.error(f"Timeout to add new market order:{order['clientOrderId']}.")
+            loguru_logger.error(f"Timeout to add spot-market-order:{order['clientOrderId']}.")
         except Exception as e:
-            loguru_logger.error(f"Failed to add new market order:{order['clientOrderId']}, err:{e}.")
+            loguru_logger.error(f"Failed to add spot-market-order:{order['clientOrderId']}, err:{e}.")
+        finally:
+            return done
+
+    @retry_decorator
+    async def add_new_spot_limit_order(self, order: Dict[str, Any]) -> bool:
+        done = False
+        try:
+            query = {"clientOrderId": order["clientOrderId"]}
+            update = {"$set": {
+                "clientOrderId": order["clientOrderId"],
+                "orderId": order["orderId"],
+                "origQty": order["origQty"],
+                "origQuoteOrderQty": order["origQuoteOrderQty"],
+                "price": order["price"],
+                "side": order["side"],
+                "status": order["status"],
+                "symbol": order["symbol"],
+                "timeInForce": order["timeInForce"],
+                "time": order["time"],
+                "updateTime": order["updateTime"],
+            }}
+            await self._store.update_one(query, update, upsert=True)
+            loguru_logger.debug(f"Added a new spot-limit-order:{order['clientOrderId']}.")
+            done = True
+        except perrors.NetworkTimeout:
+            loguru_logger.error(f"Timeout to add spot-limit-order:{order['clientOrderId']}.")
+        except Exception as e:
+            loguru_logger.error(f"Failed to add spot-limit-order:{order['clientOrderId']}, err:{e}.")
         finally:
             return done
 

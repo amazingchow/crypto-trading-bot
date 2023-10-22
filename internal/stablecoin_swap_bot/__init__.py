@@ -10,8 +10,9 @@ from binance.exceptions import BinanceAPIException, BinanceRequestException, Bin
 from colorama import Fore, Style
 from internal.db import instance as db_instance
 from internal.singleton import Singleton
-from internal.utils.helper import gen_n_digit_nums_and_letters
+from internal.utils.helper import timeit, gen_n_digit_nums_and_letters
 from loguru import logger as loguru_logger
+from typing import Any, Dict, Optional, Tuple
 
 
 class BinanceStablecoinSwapBot(metaclass=Singleton):
@@ -104,6 +105,7 @@ class BinanceStablecoinSwapBot(metaclass=Singleton):
         if self._client is not None:
             self._client.close_connection()
 
+    @timeit
     async def show_balances(self):
         """Show current balances."""
         account = None
@@ -117,19 +119,21 @@ class BinanceStablecoinSwapBot(metaclass=Singleton):
             if account is not None:
                 print(f"{Fore.GREEN} ======================================= BALANCES ======================================= {Style.RESET_ALL}")
                 for balance in account["balances"]:
-                    if balance["asset"] in ["BTC", "ETH", "USDT", "BUSD"]:
+                    if balance["asset"] in ["USDT", "BUSD"]:
                         print(f"{Fore.CYAN}{pprint.pformat(balance, indent=1, depth=1, compact=True)}{Style.RESET_ALL}")
                 print(f"{Fore.GREEN} ======================================= BALANCES ======================================= {Style.RESET_ALL}")
 
-    async def show_recent_n_orders(self, sym: str, n: int = 1):
-        """Get recent n orders (include active, canceled, or filled) for a specific symbol."""
+    @timeit
+    async def show_recent_n_orders(self, n: int = 1):
+        """Get recent n orders (include active, canceled, or filled) for BUSDUSDT."""
         orders = None
         try:
             orders = await self._aclient.get_all_orders(
-                symbol=sym,
+                symbol="BUSDUSDT",
                 limit=n,
                 recvWindow=5000,
             )
+            orders = sorted(orders, key=lambda x: x["time"], reverse=True)
         except (BinanceRequestException, BinanceAPIException) as e:
             loguru_logger.error(f"Failed to get recent {n} orders, binance's exception:{e}.")
         except Exception as e:
@@ -141,40 +145,230 @@ class BinanceStablecoinSwapBot(metaclass=Singleton):
                     print(f"{Fore.CYAN}{pprint.pformat(order, indent=1, depth=1, compact=True)}{Style.RESET_ALL}")
                 print(f"{Fore.GREEN} ======================================= RECENT N ORDERS ======================================= {Style.RESET_ALL}")
 
-    async def trade(self, sym: str, quantity: int, when: int, side: str = "BUY", retry_cnt: int = 5):
-        """Buy some quantities of a specific coin at particular time."""
+    @timeit
+    async def usdt_asset(self, verbose: bool = True) -> Tuple[Optional[str], Optional[str]]:
+        """Get USDT asset balance."""
+        free_amount = None
+        locked_amount = None
+        asset = None
+        try:
+            asset = await self._aclient.get_asset_balance(asset="USDT", recvWindow=5000)
+        except (BinanceRequestException, BinanceAPIException) as e:
+            loguru_logger.error(f"Failed to get USDT asset balance, binance's exception:{e}.")
+        except Exception as e:
+            loguru_logger.error(f"Failed to get USDT asset balance, internal exception:{e}.")
+        finally:
+            if asset is not None:
+                if verbose:
+                    print(f"{Fore.GREEN} ======================================= USDT ASSET BALANCE ======================================= {Style.RESET_ALL}")
+                    print(f"{Fore.CYAN}{pprint.pformat(asset, indent=1, depth=1, compact=True)}{Style.RESET_ALL}")
+                    print(f"{Fore.GREEN} ======================================= USDT ASSET BALANCE ======================================= {Style.RESET_ALL}")
+                free_amount = asset["free"]
+                locked_amount = asset["locked"]
+            return (free_amount, locked_amount)
+    
+    @timeit
+    async def busd_asset(self, verbose: bool = True) -> Tuple[Optional[str], Optional[str]]:
+        """Get BUSD asset balance."""
+        free_amount = None
+        locked_amount = None
+        asset = None
+        try:
+            asset = await self._aclient.get_asset_balance(asset="BUSD", recvWindow=5000)
+        except (BinanceRequestException, BinanceAPIException) as e:
+            loguru_logger.error(f"Failed to get BUSD asset balance, binance's exception:{e}.")
+        except Exception as e:
+            loguru_logger.error(f"Failed to get BUSD asset balance, internal exception:{e}.")
+        finally:
+            if asset is not None:
+                if verbose:
+                    print(f"{Fore.GREEN} ======================================= BUSD ASSET BALANCE ======================================= {Style.RESET_ALL}")
+                    print(f"{Fore.CYAN}{pprint.pformat(asset, indent=1, depth=1, compact=True)}{Style.RESET_ALL}")
+                    print(f"{Fore.GREEN} ======================================= BUSD ASSET BALANCE ======================================= {Style.RESET_ALL}")
+                free_amount = asset["free"]
+                locked_amount = asset["locked"]
+            return (free_amount, locked_amount)
+
+    @timeit
+    async def order_book_of_busd_usdt(self, verbose: bool = True) -> Optional[Dict[str, Any]]:
+        """Get the Order Book for the BUSDUSDT market."""
+        order_book = None
+        try:
+            order_book = await self._aclient.get_order_book(symbol="BUSDUSDT", limit=5)
+        except (BinanceRequestException, BinanceAPIException) as e:
+            loguru_logger.error(f"Failed to get the Order Book for the BUSDUSDT market, binance's exception:{e}.")
+        except Exception as e:
+            loguru_logger.error(f"Failed to get the Order Book for the BUSDUSDT market, internal exception:{e}.")
+        finally:
+            if order_book is not None:
+                if verbose:
+                    print(f"{Fore.GREEN} ======================================= BUSDUSDT ORDER BOOK ======================================= {Style.RESET_ALL}")
+                    print(f"{Fore.CYAN}{pprint.pformat(order_book, indent=1, depth=3, compact=True)}{Style.RESET_ALL}")
+                    print(f"{Fore.GREEN} ======================================= BUSDUSDT ORDER BOOK ======================================= {Style.RESET_ALL}")
+            return order_book
+
+    @timeit
+    async def cancel_order(self, order_id: str, verbose: bool = True) -> bool:
+        """Cancel an active order."""
+        done = False
+        try:
+            resp = await self._aclient.cancel_order(
+                symbol="BUSDUSDT",
+                origClientOrderId=order_id,
+                recvWindow=5000,
+            )
+            if verbose:
+                print(f"{Fore.GREEN} ======================================= CANCEL ORDER ======================================= {Style.RESET_ALL}")
+                print(f"{Fore.CYAN}{pprint.pformat(resp, indent=1, depth=1, compact=True)}{Style.RESET_ALL}")
+                print(f"{Fore.GREEN} ======================================= CANCEL ORDER ======================================= {Style.RESET_ALL}")
+            done = True
+        except (BinanceRequestException, BinanceAPIException) as e:
+            loguru_logger.error(f"Failed to cancel order<order_id:{order_id}>, binance's exception:{e}.")
+        except Exception as e:
+            loguru_logger.error(f"Failed to cancel order<order_id:{order_id}>, internal exception:{e}.")
+        finally:
+            return done
+
+    @timeit
+    async def check_order(self, order_id: str, expected_status: str = "FILLED", verbose: bool = True) -> bool:
+        """Check an order's status.
+
+        Available status: CANCELED, EXPIRED, FILLED, NEW, PARTIALLY_FILLED, PENDING_CANCEL, REJECTED
+        """
+        done = False
+        status = None
+        try:
+            self._client.get_order
+            resp = await self._aclient.get_order(
+                symbol="BUSDUSDT",
+                origClientOrderId=order_id,
+                recvWindow=5000,
+            )
+            if verbose:
+                print(f"{Fore.GREEN} ======================================= CHECK ORDER ======================================= {Style.RESET_ALL}")
+                print(f"{Fore.CYAN}{pprint.pformat(resp, indent=1, depth=1, compact=True)}{Style.RESET_ALL}")
+                print(f"{Fore.GREEN} ======================================= CHECK ORDER ======================================= {Style.RESET_ALL}")
+            status = resp["status"]
+        except (BinanceRequestException, BinanceAPIException) as e:
+            loguru_logger.error(f"Failed to cancel order<order_id:{order_id}>, binance's exception:{e}.")
+        except Exception as e:
+            loguru_logger.error(f"Failed to cancel order<order_id:{order_id}>, internal exception:{e}.")
+        finally:
+            if status is not None and status == expected_status:
+                done = True
+            return done
+
+    @timeit
+    async def swap(self, when: int, retry_cnt: int = 1):
+        """Run USDT/BUSD swap for a long time."""
+        usdt_free_amount, usdt_locked_amount = await self.usdt_asset()
+        if usdt_free_amount is None or usdt_locked_amount is None:
+            return
+        busd_free_amount, busd_locked_amount = await self.busd_asset()
+        if busd_free_amount is None or busd_locked_amount is None:
+            return
+        usdt_free_amount = float(usdt_free_amount)
+        busd_free_amount = float(busd_free_amount)
+        if usdt_free_amount < 1 and busd_free_amount < 1:
+            loguru_logger.warning("No need to swap, USDT and BUSD is insufficient.")
+            return
+        if float(usdt_locked_amount) > 1 or float(busd_locked_amount) > 1:
+            loguru_logger.warning("No need to swap, there are pending orders existed.")
+            return
+
         now = time.time()
         while now < when:
             await asyncio.sleep(0.001)
             now = time.time()
 
-        retries = 0
-        done = False
-        order_id = gen_n_digit_nums_and_letters(22)
-        while retries < retry_cnt:
-            try:
-                loguru_logger.info(f"Try to trade new order<order_id:{order_id}>...")
-                if side == "BUY":
-                    self._client.order_market_buy
-                    resp = await self._aclient.order_market_buy(
-                        symbol=sym,
-                        quoteOrderQty=quantity,
-                        newClientOrderId=order_id,
-                        recvWindow=2000,
-                    )
-                loguru_logger.info(f"Traded new order<order_id:{order_id}>.")
-                print(f"{Fore.GREEN} ======================================= NEW ORDER ======================================= {Style.RESET_ALL}")
-                print(f"{Fore.CYAN}{pprint.pformat(resp, indent=1, depth=1, compact=True)}{Style.RESET_ALL}")
-                print(f"{Fore.GREEN} ======================================= NEW ORDER ======================================= {Style.RESET_ALL}")
-                await db_instance().add_new_market_order(order=resp)
-                done = True
-            except (BinanceRequestException, BinanceAPIException, BinanceOrderException) as e:
-                loguru_logger.error(f"Failed to trade new order<order_id:{order_id}>, binance's exception:{e}.")
-                await asyncio.sleep(0.001)
-                retries += 1
-            except Exception as e:
-                loguru_logger.error(f"Failed to trade new order<order_id:{order_id}>, internal exception:{e}.")
-                done = True
-            finally:
-                if done:
+        side = "BUY"
+        if usdt_free_amount < busd_free_amount:
+            side = "SELL"
+        buy_price = "0.9999"
+        buy_price_number = 0.9999
+        sell_price = "1.0001"
+
+        while 1:
+            # 1. Place new order.
+            order_id = gen_n_digit_nums_and_letters(22)
+            retries = 0
+            done = False
+            resp = None
+            while retries < retry_cnt:
+                try:
+                    # BUSD is the base asset (use quantity to measure the amount),
+                    # while USDT is the quote asset (use quoteOrderQty to measure the amount).
+                    if side == "BUY":
+                        loguru_logger.info(f"Try to place a new order<order_id:{order_id}, direction: USDT -> BUSD, amount:{usdt_free_amount}>...")
+                        self._client.order_limit_buy
+                        resp = await self._aclient.order_limit_buy(
+                            symbol="BUSDUSDT",
+                            quantity=int(usdt_free_amount / buy_price_number),
+                            price=buy_price,
+                            timeInForce="GTC",
+                            newClientOrderId=order_id,
+                            recvWindow=2000,
+                        )
+                        loguru_logger.info(f"Placed new order<order_id:{order_id}, direction: USDT -> BUSD, amount:{usdt_free_amount}>.")
+                    else:
+                        loguru_logger.info(f"Try to place a new order<order_id:{order_id}, direction: BUSD -> USDT, amount:{busd_free_amount}>...")
+                        resp = await self._aclient.order_limit_sell(
+                            symbol="BUSDUSDT",
+                            quantity=busd_free_amount,
+                            price=sell_price,
+                            timeInForce="GTC",
+                            newClientOrderId=order_id,
+                            recvWindow=2000,
+                        )
+                        loguru_logger.info(f"Placed new order<order_id:{order_id}, direction: BUSD -> USDT, amount:{busd_free_amount}>.")
+                    print(f"{Fore.GREEN} ======================================= NEW ORDER ======================================= {Style.RESET_ALL}")
+                    print(f"{Fore.CYAN}{pprint.pformat(resp, indent=1, depth=1, compact=True)}{Style.RESET_ALL}")
+                    print(f"{Fore.GREEN} ======================================= NEW ORDER ======================================= {Style.RESET_ALL}")
+                    done = True
+                except (BinanceRequestException, BinanceAPIException, BinanceOrderException) as e:
+                    if side == "BUY":
+                        loguru_logger.error(f"Failed to place new order<order_id:{order_id}, direction: USDT -> BUSD>, binance's exception:{e}.")
+                    else:
+                        loguru_logger.error(f"Failed to place new order<order_id:{order_id}, direction: BUSD -> USDT>, binance's exception:{e}.")
+                    await asyncio.sleep(0.001)
+                    retries += 1
+                except Exception as e:
+                    if side == "BUY":
+                        loguru_logger.error(f"Failed to place new order<order_id:{order_id}, direction: USDT -> BUSD>, internal exception:{e}.")
+                    else:
+                        loguru_logger.error(f"Failed to place new order<order_id:{order_id}, direction: BUSD -> USDT>, internal exception:{e}.")
+                    retries = retry_cnt
+                finally:
+                    if done:
+                        break
+
+            # 2. If failed to place new order, just quit the swap routine.
+            if not done:
+                break
+            
+            # 3. Wait for the pending order to be filled.
+            while 1:
+                filled = await self.check_order(order_id=order_id, verbose=False)
+                if filled:
                     break
+                loguru_logger.debug(f"Order<order_id:{order_id}> has not been filled, wait for 30s to check later...")
+                await asyncio.sleep(30)
+
+            await db_instance().add_new_spot_limit_order(order=resp)
+
+            # 4. Reconcile the BUSD/USDT asset.
+            if side == "SELL":
+                loguru_logger.debug("one-way arbitrage:BUSD ->USDT has been done, start another...")
+                usdt_free_amount, _ = await self.usdt_asset()
+                if usdt_free_amount is None:
+                    break
+                usdt_free_amount = float(usdt_free_amount)
+                side = "BUY"
+            else:
+                loguru_logger.debug("one-way arbitrage:USDT -> BUSD has been done, start another...")
+                busd_free_amount, _ = await self.busd_asset()
+                if busd_free_amount is None:
+                    
+                    break
+                busd_free_amount = float(busd_free_amount)
+                side = "SELL"

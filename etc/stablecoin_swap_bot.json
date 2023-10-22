@@ -5,7 +5,7 @@
         "password": "aExc_NlfDrs_PXsL",
         "auth_mechanism": "SCRAM-SHA-256",
         "database": "binance_testnet",
-        "collection": "spot_order_market_type",
+        "collection": "spot_order_limit_type",
         "indexes": [
             {
                 "name": "clientOrderId",
