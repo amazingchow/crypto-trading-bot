@@ -44,6 +44,8 @@ def parse_args():
     )
     balances_parser = subparsers.add_parser("balances")
     _ = balances_parser
+    orderbook_parser = subparsers.add_parser("orderbook")
+    _ = orderbook_parser
     orders_parser = subparsers.add_parser("orders")
     orders_parser.add_argument(
         "--limit",
@@ -76,7 +78,7 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    if args.action not in ["balances", "orders", "swap", "cancel"]:
+    if args.action not in ["balances", "orderbook", "orders", "swap", "cancel"]:
         loguru_logger(f"Unknown action: {args.action}")
     action = args.action
     
@@ -95,6 +97,9 @@ if __name__ == "__main__":
         if ready:
             if action == "balances":
                 task = asyncio.ensure_future(bot.show_balances())
+                loop.run_until_complete(task)
+            elif action == "orderbook":
+                task = asyncio.ensure_future(bot.orderbook_of_busd_usdt())
                 loop.run_until_complete(task)
             elif action == "orders":
                 task = asyncio.ensure_future(bot.show_recent_n_orders(n=args.limit))

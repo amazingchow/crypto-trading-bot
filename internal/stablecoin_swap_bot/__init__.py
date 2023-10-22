@@ -190,22 +190,22 @@ class BinanceStablecoinSwapBot(metaclass=Singleton):
             return (free_amount, locked_amount)
 
     @timeit
-    async def order_book_of_busd_usdt(self, verbose: bool = True) -> Optional[Dict[str, Any]]:
+    async def orderbook_of_busd_usdt(self, verbose: bool = True) -> Optional[Dict[str, Any]]:
         """Get the Order Book for the BUSDUSDT market."""
-        order_book = None
+        orderbook = None
         try:
-            order_book = await self._aclient.get_order_book(symbol="BUSDUSDT", limit=5)
+            orderbook = await self._aclient.get_order_book(symbol="BUSDUSDT", limit=5)
         except (BinanceRequestException, BinanceAPIException) as e:
             loguru_logger.error(f"Failed to get the Order Book for the BUSDUSDT market, binance's exception:{e}.")
         except Exception as e:
             loguru_logger.error(f"Failed to get the Order Book for the BUSDUSDT market, internal exception:{e}.")
         finally:
-            if order_book is not None:
+            if orderbook is not None:
                 if verbose:
                     print(f"{Fore.GREEN} ======================================= BUSDUSDT ORDER BOOK ======================================= {Style.RESET_ALL}")
-                    print(f"{Fore.CYAN}{pprint.pformat(order_book, indent=1, depth=3, compact=True)}{Style.RESET_ALL}")
+                    print(f"{Fore.CYAN}{pprint.pformat(orderbook, indent=1, depth=3, compact=True)}{Style.RESET_ALL}")
                     print(f"{Fore.GREEN} ======================================= BUSDUSDT ORDER BOOK ======================================= {Style.RESET_ALL}")
-            return order_book
+            return orderbook
 
     @timeit
     async def cancel_order(self, order_id: str, verbose: bool = True) -> bool:
@@ -250,9 +250,9 @@ class BinanceStablecoinSwapBot(metaclass=Singleton):
                 print(f"{Fore.GREEN} ======================================= CHECK ORDER ======================================= {Style.RESET_ALL}")
             status = resp["status"]
         except (BinanceRequestException, BinanceAPIException) as e:
-            loguru_logger.error(f"Failed to cancel order<order_id:{order_id}>, binance's exception:{e}.")
+            loguru_logger.error(f"Failed to check order<order_id:{order_id}>, binance's exception:{e}.")
         except Exception as e:
-            loguru_logger.error(f"Failed to cancel order<order_id:{order_id}>, internal exception:{e}.")
+            loguru_logger.error(f"Failed to check order<order_id:{order_id}>, internal exception:{e}.")
         finally:
             if status is not None and status == expected_status:
                 done = True
@@ -284,16 +284,19 @@ class BinanceStablecoinSwapBot(metaclass=Singleton):
         side = "BUY"
         if usdt_free_amount < busd_free_amount:
             side = "SELL"
-        buy_price = "0.9999"
-        buy_price_number = 0.9999
-        sell_price = "1.0001"
-
         while 1:
             # 1. Place new order.
             order_id = gen_n_digit_nums_and_letters(22)
             retries = 0
             done = False
             resp = None
+
+            # TODO: Be more smarter to pick buy/sell price... 
+            orderbook = await self.orderbook_of_busd_usdt()
+            buy_price = orderbook["bids"][0][0]
+            buy_price_number = float(buy_price)
+            sell_price = orderbook["asks"][0][0]
+
             while retries < retry_cnt:
                 try:
                     # BUSD is the base asset (use quantity to measure the amount),
@@ -368,7 +371,6 @@ class BinanceStablecoinSwapBot(metaclass=Singleton):
                 loguru_logger.debug("one-way arbitrage:USDT -> BUSD has been done, start another...")
                 busd_free_amount, _ = await self.busd_asset()
                 if busd_free_amount is None:
-                    
                     break
                 busd_free_amount = float(busd_free_amount)
                 side = "SELL"
