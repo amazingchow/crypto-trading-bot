@@ -2,6 +2,7 @@
 import asyncio
 import os
 import pprint
+import tabulate
 import time
 
 from binance.client import AsyncClient as AsyncBinanceRestAPIClient
@@ -117,9 +118,12 @@ class BinanceStaggingBot(metaclass=Singleton):
         finally:
             if account is not None:
                 print(f"{Fore.GREEN} ======================================= BALANCES ======================================= {Style.RESET_ALL}")
+                table = [["Asset", "Free", "Locked"]]
                 for balance in account["balances"]:
                     if balance["asset"] in ["BTC", "ETH", "USDT", "BUSD"]:
-                        print(f"{Fore.CYAN}{pprint.pformat(balance, indent=1, depth=1, compact=True)}{Style.RESET_ALL}")
+                        table.append([balance["asset"], balance["free"], balance["locked"]])
+                table_output = tabulate.tabulate(table, headers="firstrow", tablefmt="mixed_grid", showindex="always")
+                print(f"{Fore.CYAN}{table_output}{Style.RESET_ALL}")
                 print(f"{Fore.GREEN} ======================================= BALANCES ======================================= {Style.RESET_ALL}")
 
     @timeit

@@ -2,6 +2,7 @@
 import asyncio
 import os
 import pprint
+import tabulate
 import time
 
 from binance.client import AsyncClient as AsyncBinanceRestAPIClient
@@ -118,9 +119,12 @@ class BinanceStablecoinSwapBot(metaclass=Singleton):
         finally:
             if account is not None:
                 print(f"{Fore.GREEN} ======================================= BALANCES ======================================= {Style.RESET_ALL}")
+                table = [["Asset", "Free", "Locked"]]
                 for balance in account["balances"]:
                     if balance["asset"] in ["USDT", "BUSD"]:
-                        print(f"{Fore.CYAN}{pprint.pformat(balance, indent=1, depth=1, compact=True)}{Style.RESET_ALL}")
+                        table.append([balance["asset"], balance["free"], balance["locked"]])
+                table_output = tabulate.tabulate(table, headers="firstrow", tablefmt="mixed_grid", showindex="always")
+                print(f"{Fore.CYAN}{table_output}{Style.RESET_ALL}")
                 print(f"{Fore.GREEN} ======================================= BALANCES ======================================= {Style.RESET_ALL}")
 
     @timeit
@@ -141,8 +145,18 @@ class BinanceStablecoinSwapBot(metaclass=Singleton):
         finally:
             if orders is not None:
                 print(f"{Fore.GREEN} ======================================= RECENT N ORDERS ======================================= {Style.RESET_ALL}")
+                table = [["ClientOrderId", "OrigQty", "Side", "Price", "Status", "Time"]]
                 for order in orders:
-                    print(f"{Fore.CYAN}{pprint.pformat(order, indent=1, depth=1, compact=True)}{Style.RESET_ALL}")
+                    table.append([
+                        order["clientOrderId"],
+                        order["origQty"],
+                        order["side"],
+                        order["price"],
+                        order["status"],
+                        order["time"],
+                    ])
+                table_output = tabulate.tabulate(table, headers="firstrow", tablefmt="mixed_grid", showindex="always")
+                print(f"{Fore.CYAN}{table_output}{Style.RESET_ALL}")
                 print(f"{Fore.GREEN} ======================================= RECENT N ORDERS ======================================= {Style.RESET_ALL}")
 
     @timeit
@@ -291,7 +305,7 @@ class BinanceStablecoinSwapBot(metaclass=Singleton):
             done = False
             resp = None
 
-            # TODO: Be more smarter to pick buy/sell price... 
+            # TODO: Be more smarter to pick buy/sell price...
             orderbook = await self.orderbook_of_busd_usdt()
             buy_price = orderbook["bids"][0][0]
             buy_price_number = float(buy_price)
