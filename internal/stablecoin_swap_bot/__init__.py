@@ -131,9 +131,9 @@ class BinanceStablecoinSwapBot(metaclass=Singleton):
         """Show total profit."""
         cnt, ok = await db_instance().count_spot_limit_orders_of_x_status(status="FILLED")
         if ok:
-            print(f"{Fore.GREEN} ======================================= BALANCES ======================================= {Style.RESET_ALL}")
+            print(f"{Fore.GREEN} ======================================= PROFIT ======================================= {Style.RESET_ALL}")
             print(f"{Fore.CYAN} Cumulative Arbitrage {cnt} Times. {Style.RESET_ALL}")
-            print(f"{Fore.GREEN} ======================================= BALANCES ======================================= {Style.RESET_ALL}")
+            print(f"{Fore.GREEN} ======================================= PROFIT ======================================= {Style.RESET_ALL}")
 
     @timeit
     async def show_recent_n_orders(self, n: int = 1):
@@ -246,6 +246,44 @@ class BinanceStablecoinSwapBot(metaclass=Singleton):
             return orderbook
 
     @timeit
+    async def check_order(self, order_id: str, expected_status: str = "FILLED", verbose: bool = True) -> bool:
+        """Check an order's status.
+
+        Available status: CANCELED, EXPIRED, FILLED, NEW, PARTIALLY_FILLED, PENDING_CANCEL, REJECTED
+        """
+        done = False
+        status = None
+        try:
+            resp = await self._aclient.get_order(
+                symbol="BUSDUSDT",
+                origClientOrderId=order_id,
+                recvWindow=5000,
+            )
+            if verbose:
+                print(f"{Fore.GREEN} ======================================= CHECK ORDER ======================================= {Style.RESET_ALL}")
+                table = [["ClientOrderId", "OrigQty", "Side", "Price", "Status", "Time"]]
+                table.append([
+                    resp["clientOrderId"],
+                    resp["origQty"],
+                    resp["side"],
+                    resp["price"],
+                    resp["status"],
+                    resp["time"],
+                ])
+                table_output = tabulate.tabulate(table, headers="firstrow", tablefmt="mixed_grid")
+                print(f"{Fore.CYAN}{table_output}{Style.RESET_ALL}")
+                print(f"{Fore.GREEN} ======================================= CHECK ORDER ======================================= {Style.RESET_ALL}")
+            status = resp["status"]
+        except (BinanceRequestException, BinanceAPIException) as e:
+            loguru_logger.error(f"Failed to check order<order_id:{order_id}>, binance's exception:{e}.")
+        except Exception as e:
+            loguru_logger.error(f"Failed to check order<order_id:{order_id}>, internal exception:{e}.")
+        finally:
+            if status is not None and status == expected_status:
+                done = True
+            return done
+
+    @timeit
     async def cancel_order(self, order_id: str, verbose: bool = True) -> bool:
         """Cancel an active order."""
         done = False
@@ -275,45 +313,6 @@ class BinanceStablecoinSwapBot(metaclass=Singleton):
         except Exception as e:
             loguru_logger.error(f"Failed to cancel order<order_id:{order_id}>, internal exception:{e}.")
         finally:
-            return done
-
-    @timeit
-    async def check_order(self, order_id: str, expected_status: str = "FILLED", verbose: bool = True) -> bool:
-        """Check an order's status.
-
-        Available status: CANCELED, EXPIRED, FILLED, NEW, PARTIALLY_FILLED, PENDING_CANCEL, REJECTED
-        """
-        done = False
-        status = None
-        try:
-            self._client.get_order
-            resp = await self._aclient.get_order(
-                symbol="BUSDUSDT",
-                origClientOrderId=order_id,
-                recvWindow=5000,
-            )
-            if verbose:
-                print(f"{Fore.GREEN} ======================================= CHECK ORDER ======================================= {Style.RESET_ALL}")
-                table = [["ClientOrderId", "OrigQty", "Side", "Price", "Status", "Time"]]
-                table.append([
-                    resp["clientOrderId"],
-                    resp["origQty"],
-                    resp["side"],
-                    resp["price"],
-                    resp["status"],
-                    resp["time"],
-                ])
-                table_output = tabulate.tabulate(table, headers="firstrow", tablefmt="mixed_grid")
-                print(f"{Fore.CYAN}{table_output}{Style.RESET_ALL}")
-                print(f"{Fore.GREEN} ======================================= CHECK ORDER ======================================= {Style.RESET_ALL}")
-            status = resp["status"]
-        except (BinanceRequestException, BinanceAPIException) as e:
-            loguru_logger.error(f"Failed to check order<order_id:{order_id}>, binance's exception:{e}.")
-        except Exception as e:
-            loguru_logger.error(f"Failed to check order<order_id:{order_id}>, internal exception:{e}.")
-        finally:
-            if status is not None and status == expected_status:
-                done = True
             return done
 
     @timeit
@@ -361,7 +360,6 @@ class BinanceStablecoinSwapBot(metaclass=Singleton):
                     # while USDT is the quote asset (use quoteOrderQty to measure the amount).
                     if side == "BUY":
                         loguru_logger.info(f"Try to place a new order<order_id:{order_id}, direction: USDT -> BUSD, amount:{usdt_free_amount}>...")
-                        self._client.order_limit_buy
                         resp = await self._aclient.order_limit_buy(
                             symbol="BUSDUSDT",
                             quantity=int(usdt_free_amount / buy_price_number),

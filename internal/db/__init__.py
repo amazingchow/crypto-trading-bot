@@ -186,11 +186,11 @@ class MongoClient(metaclass=Singleton):
         finally:
             return done
 
-    async def count_spot_limit_orders_of_x_status(self, status: str = "FILLED") -> Tuple[int, bool]:
+    async def count_spot_limit_orders_of_x_status(self, sym: str = "BUSDUSDT", status: str = "FILLED") -> Tuple[int, bool]:
         done = False
         cnt = 0
         try:
-            cnt = await self._store.count_documents({"status": status})
+            cnt = await self._store.count_documents({"symbol": sym, "status": status})
             done = True
         except perrors.NetworkTimeout:
             loguru_logger.error(f"Timeout to count spot-limit-orders of status:{status}.")
