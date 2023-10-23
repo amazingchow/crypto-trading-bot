@@ -163,18 +163,18 @@ class MongoClient(metaclass=Singleton):
         done = False
         try:
             query = {"clientOrderId": order["clientOrderId"]}
+            update_ts = int(time.time())
             update = {"$set": {
                 "clientOrderId": order["clientOrderId"],
                 "orderId": order["orderId"],
                 "origQty": order["origQty"],
-                "origQuoteOrderQty": order["origQuoteOrderQty"],
                 "price": order["price"],
                 "side": order["side"],
                 "status": order["status"],
                 "symbol": order["symbol"],
                 "timeInForce": order["timeInForce"],
-                "time": order["time"],
-                "updateTime": order["updateTime"],
+                "transactTime": order["transactTime"],
+                "updateTime": update_ts,
             }}
             await self._store.update_one(query, update, upsert=True)
             loguru_logger.debug(f"Added a new spot-limit-order:{order['clientOrderId']}.")
