@@ -42,18 +42,30 @@ def parse_args():
         dest="action",
         help="action to perform"
     )
-    balances_parser = subparsers.add_parser("balances")
+    balances_parser = subparsers.add_parser(
+        "balances",
+        help="Show current balances.",
+    )
     _ = balances_parser
-    orderbook_parser = subparsers.add_parser("orderbook")
+    orderbook_parser = subparsers.add_parser(
+        "orderbook",
+        help="Get the Order Book for the BUSDUSDT market.",
+    )
     _ = orderbook_parser
-    orders_parser = subparsers.add_parser("orders")
+    orders_parser = subparsers.add_parser(
+        "orders",
+        help="Get recent n orders (include active, canceled, or filled) for BUSDUSDT.",
+    )
     orders_parser.add_argument(
         "--limit",
         type=int,
         default=1,
         help="recent N BUSDUSDT swap orders",
     )
-    swap_parser = subparsers.add_parser("swap")
+    swap_parser = subparsers.add_parser(
+        "swap",
+        help="Run USDT/BUSD swap for a long time.",
+    )
     swap_parser.add_argument(
         "--when",
         type=int,
@@ -64,7 +76,20 @@ def parse_args():
         type=int,
         help="the relative unix timestamp when you want to start stablecoin-swap",
     )
-    cancel_order_parser = subparsers.add_parser("cancel")
+    check_order_parser = subparsers.add_parser(
+        "check",
+        help="Check an order's status.",
+    )
+    check_order_parser.add_argument(
+        "--order_id",
+        type=str,
+        help="the unique order id",
+        required=True,
+    )
+    cancel_order_parser = subparsers.add_parser(
+        "cancel",
+        help="Cancel an active order.",
+    )
     cancel_order_parser.add_argument(
         "--order_id",
         type=str,
@@ -78,7 +103,7 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    if args.action not in ["balances", "orderbook", "orders", "swap", "cancel"]:
+    if args.action not in ["balances", "orderbook", "orders", "swap", "check", "cancel"]:
         loguru_logger(f"Unknown action: {args.action}")
     action = args.action
     
@@ -137,6 +162,9 @@ if __name__ == "__main__":
                     loop.run_until_complete(task)
                 else:
                     loguru_logger(f"Invalid action: {action}")
+            elif action == "check":
+                task = asyncio.ensure_future(bot.check_order(order_id=args.order_id))
+                loop.run_until_complete(task)
             elif action == "cancel":
                 task = asyncio.ensure_future(bot.cancel_order(order_id=args.order_id))
                 loop.run_until_complete(task)

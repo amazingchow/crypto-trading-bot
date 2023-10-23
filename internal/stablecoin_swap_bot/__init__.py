@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import asyncio
 import os
-import pprint
 import tabulate
 import time
 
@@ -175,7 +174,9 @@ class BinanceStablecoinSwapBot(metaclass=Singleton):
             if asset is not None:
                 if verbose:
                     print(f"{Fore.GREEN} ======================================= USDT ASSET BALANCE ======================================= {Style.RESET_ALL}")
-                    print(f"{Fore.CYAN}{pprint.pformat(asset, indent=1, depth=1, compact=True)}{Style.RESET_ALL}")
+                    table = [["Asset", "Free", "Locked"], [asset["asset"], asset["free"], asset["locked"]]]
+                    table_output = tabulate.tabulate(table, headers="firstrow", tablefmt="mixed_grid")
+                    print(f"{Fore.CYAN}{table_output}{Style.RESET_ALL}")
                     print(f"{Fore.GREEN} ======================================= USDT ASSET BALANCE ======================================= {Style.RESET_ALL}")
                 free_amount = asset["free"]
                 locked_amount = asset["locked"]
@@ -197,7 +198,9 @@ class BinanceStablecoinSwapBot(metaclass=Singleton):
             if asset is not None:
                 if verbose:
                     print(f"{Fore.GREEN} ======================================= BUSD ASSET BALANCE ======================================= {Style.RESET_ALL}")
-                    print(f"{Fore.CYAN}{pprint.pformat(asset, indent=1, depth=1, compact=True)}{Style.RESET_ALL}")
+                    table = [["Asset", "Free", "Locked"], [asset["asset"], asset["free"], asset["locked"]]]
+                    table_output = tabulate.tabulate(table, headers="firstrow", tablefmt="mixed_grid")
+                    print(f"{Fore.CYAN}{table_output}{Style.RESET_ALL}")
                     print(f"{Fore.GREEN} ======================================= BUSD ASSET BALANCE ======================================= {Style.RESET_ALL}")
                 free_amount = asset["free"]
                 locked_amount = asset["locked"]
@@ -217,7 +220,19 @@ class BinanceStablecoinSwapBot(metaclass=Singleton):
             if orderbook is not None:
                 if verbose:
                     print(f"{Fore.GREEN} ======================================= BUSDUSDT ORDER BOOK ======================================= {Style.RESET_ALL}")
-                    print(f"{Fore.CYAN}{pprint.pformat(orderbook, indent=1, depth=3, compact=True)}{Style.RESET_ALL}")
+                    table = [["Sell", "SellQty", "Buy", "BuyQty"]]
+                    i, j = 4, 0
+                    while i >= 0 and j < 5:
+                        table.append([
+                            orderbook["asks"][i][0],
+                            orderbook["asks"][i][1],
+                            orderbook["bids"][j][0],
+                            orderbook["bids"][j][1],
+                        ])
+                        i -= 1
+                        j += 1
+                    table_output = tabulate.tabulate(table, headers="firstrow", tablefmt="psql")
+                    print(f"{Fore.CYAN}{table_output}{Style.RESET_ALL}")
                     print(f"{Fore.GREEN} ======================================= BUSDUSDT ORDER BOOK ======================================= {Style.RESET_ALL}")
             return orderbook
 
@@ -233,7 +248,17 @@ class BinanceStablecoinSwapBot(metaclass=Singleton):
             )
             if verbose:
                 print(f"{Fore.GREEN} ======================================= CANCEL ORDER ======================================= {Style.RESET_ALL}")
-                print(f"{Fore.CYAN}{pprint.pformat(resp, indent=1, depth=1, compact=True)}{Style.RESET_ALL}")
+                table = [["ClientOrderId", "OrigQty", "Side", "Price", "Status", "TransactTime"]]
+                table.append([
+                    resp["clientOrderId"],
+                    resp["origQty"],
+                    resp["side"],
+                    resp["price"],
+                    resp["status"],
+                    resp["transactTime"],
+                ])
+                table_output = tabulate.tabulate(table, headers="firstrow", tablefmt="mixed_grid")
+                print(f"{Fore.CYAN}{table_output}{Style.RESET_ALL}")
                 print(f"{Fore.GREEN} ======================================= CANCEL ORDER ======================================= {Style.RESET_ALL}")
             done = True
         except (BinanceRequestException, BinanceAPIException) as e:
@@ -260,7 +285,17 @@ class BinanceStablecoinSwapBot(metaclass=Singleton):
             )
             if verbose:
                 print(f"{Fore.GREEN} ======================================= CHECK ORDER ======================================= {Style.RESET_ALL}")
-                print(f"{Fore.CYAN}{pprint.pformat(resp, indent=1, depth=1, compact=True)}{Style.RESET_ALL}")
+                table = [["ClientOrderId", "OrigQty", "Side", "Price", "Status", "Time"]]
+                table.append([
+                    resp["clientOrderId"],
+                    resp["origQty"],
+                    resp["side"],
+                    resp["price"],
+                    resp["status"],
+                    resp["time"],
+                ])
+                table_output = tabulate.tabulate(table, headers="firstrow", tablefmt="mixed_grid")
+                print(f"{Fore.CYAN}{table_output}{Style.RESET_ALL}")
                 print(f"{Fore.GREEN} ======================================= CHECK ORDER ======================================= {Style.RESET_ALL}")
             status = resp["status"]
         except (BinanceRequestException, BinanceAPIException) as e:
@@ -339,7 +374,17 @@ class BinanceStablecoinSwapBot(metaclass=Singleton):
                         )
                         loguru_logger.info(f"Placed new order<order_id:{order_id}, direction: BUSD -> USDT, amount:{busd_free_amount}>.")
                     print(f"{Fore.GREEN} ======================================= NEW ORDER ======================================= {Style.RESET_ALL}")
-                    print(f"{Fore.CYAN}{pprint.pformat(resp, indent=1, depth=1, compact=True)}{Style.RESET_ALL}")
+                    table = [["ClientOrderId", "OrigQty", "Side", "Price", "Status", "TransactTime"]]
+                    table.append([
+                        resp["clientOrderId"],
+                        resp["origQty"],
+                        resp["side"],
+                        resp["price"],
+                        resp["status"],
+                        resp["transactTime"],
+                    ])
+                    table_output = tabulate.tabulate(table, headers="firstrow", tablefmt="mixed_grid")
+                    print(f"{Fore.CYAN}{table_output}{Style.RESET_ALL}")
                     print(f"{Fore.GREEN} ======================================= NEW ORDER ======================================= {Style.RESET_ALL}")
                     done = True
                 except (BinanceRequestException, BinanceAPIException, BinanceOrderException) as e:
