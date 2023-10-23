@@ -16,7 +16,7 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential,
 )
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 
 def _create_retry_decorator(min_secs: int = 1, max_secs: int = 60, max_retries: int = 3) -> Callable[[Any], Any]:
@@ -185,6 +185,19 @@ class MongoClient(metaclass=Singleton):
             loguru_logger.error(f"Failed to add spot-limit-order:{order['clientOrderId']}, err:{e}.")
         finally:
             return done
+
+    async def count_spot_limit_orders_of_x_status(self, status: str = "FILLED") -> Tuple[int, bool]:
+        done = False
+        cnt = 0
+        try:
+            cnt = await self._store.count_documents({"status": status})
+            done = True
+        except perrors.NetworkTimeout:
+            loguru_logger.error(f"Timeout to count spot-limit-orders of status:{status}.")
+        except Exception as e:
+            loguru_logger.error(f"Failed to count spot-limit-orders of status:{status}, err:{e}.")
+        finally:
+            return (cnt, done)
 
     def close(self):
         self._client.close()
