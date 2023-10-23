@@ -143,8 +143,19 @@ class BinanceStaggingBot(metaclass=Singleton):
         finally:
             if orders is not None:
                 print(f"{Fore.GREEN} ======================================= RECENT N ORDERS ======================================= {Style.RESET_ALL}")
+                table = [["Symbol", "ClientOrderId", "OrigQty", "Side", "Price", "Status", "Time"]]
                 for order in orders:
-                    print(f"{Fore.CYAN}{pprint.pformat(order, indent=1, depth=1, compact=True)}{Style.RESET_ALL}")
+                    table.append([
+                        order["symbol"],
+                        order["clientOrderId"],
+                        order["origQty"],
+                        order["side"],
+                        order["price"],
+                        order["status"],
+                        order["time"],
+                    ])
+                table_output = tabulate.tabulate(table, headers="firstrow", tablefmt="mixed_grid", showindex="always")
+                print(f"{Fore.CYAN}{table_output}{Style.RESET_ALL}")
                 print(f"{Fore.GREEN} ======================================= RECENT N ORDERS ======================================= {Style.RESET_ALL}")
 
     @timeit
