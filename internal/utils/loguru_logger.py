@@ -39,7 +39,6 @@ def init_global_logger():
         format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
                "<level>{level: <8}</level> | "
                "<red>ctx={extra[ctx]}</red> | "
-               "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
                "- <level>{message}</level>",
         colorize=_env("LOGURU_COLORIZE", bool, False),
         serialize=_env("LOGURU_SERIALIZE", bool, False),

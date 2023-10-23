@@ -27,6 +27,10 @@ lint: ### Lint code.
 	@pycodestyle run_stagging_bot.py --ignore=W293,W503,E266,E402,E501
 	@pycodestyle internal/*/*.py --ignore=W293,W503,E266,E402,E501
 
+.PHONY: local_run
+local_run:
+	python run_grid_trading_bot.py trade --symbol=BTCUSDT --lower_range_price=29000 --upper_range_price=31000 --grids=2000 --total_investment=10000 --elapse=1
+
 .PHONY: run_compose
 run_compose:
 	@(docker-compose -f "${CURR_DIR}/docker-compose.yml" up -d --build)

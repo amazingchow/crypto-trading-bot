@@ -139,8 +139,6 @@ def clear_env():
 
 if __name__ == "__main__":
     args = parse_args()
-    if args.action not in ["balances", "profit", "orderbook", "orders", "swap", "check", "cancel"]:
-        loguru_logger(f"Unknown action: {args.action}")
     action = args.action
     
     set_config(args.conf)
@@ -178,7 +176,7 @@ if __name__ == "__main__":
                     task = asyncio.ensure_future(bot.swap(when=int(time.time()) + args.elapse))
                     loop.run_until_complete(task)
                 else:
-                    loguru_logger(f"Invalid action: {action}")
+                    loguru_logger.error(f"Invalid action: {action}")
             elif action == "check":
                 task = asyncio.ensure_future(bot.check_order(order_id=args.order_id))
                 loop.run_until_complete(task)

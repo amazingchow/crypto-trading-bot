@@ -4,9 +4,19 @@
         "username": "root",
         "password": "aExc_NlfDrs_PXsL",
         "auth_mechanism": "SCRAM-SHA-256",
-        "kline_store": {
-            "database": "binance",
-            "collection": "testnet.klines_1m"
-        }
+        "database": "binance_testnet",
+        "collection": "spot_order_limit_type",
+        "indexes": [
+            {
+                "name": "clientOrderId",
+                "unique": true,
+                "direction": 1
+            },
+            {
+                "name": "updateTime",
+                "unique": false,
+                "direction": -1
+            }
+        ]
     }
 }
