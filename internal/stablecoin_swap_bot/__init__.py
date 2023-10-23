@@ -127,6 +127,15 @@ class BinanceStablecoinSwapBot(metaclass=Singleton):
                 print(f"{Fore.GREEN} ======================================= BALANCES ======================================= {Style.RESET_ALL}")
 
     @timeit
+    async def show_profit(self):
+        """Show total profit."""
+        cnt, ok = await db_instance().count_spot_limit_orders_of_x_status(status="FILLED")
+        if ok:
+            print(f"{Fore.GREEN} ======================================= BALANCES ======================================= {Style.RESET_ALL}")
+            print(f"{Fore.CYAN} Cumulative Arbitrage {cnt} Times. {Style.RESET_ALL}")
+            print(f"{Fore.GREEN} ======================================= BALANCES ======================================= {Style.RESET_ALL}")
+
+    @timeit
     async def show_recent_n_orders(self, n: int = 1):
         """Get recent n orders (include active, canceled, or filled) for BUSDUSDT."""
         orders = None
@@ -416,6 +425,7 @@ class BinanceStablecoinSwapBot(metaclass=Singleton):
                 loguru_logger.debug(f"Order<order_id:{order_id}> has not been filled, wait for 30s to check later...")
                 await asyncio.sleep(30)
 
+            resp["status"] = "FILLED"
             await db_instance().add_new_spot_limit_order(order=resp)
 
             # 4. Reconcile the BUSD/USDT asset.

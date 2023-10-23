@@ -47,6 +47,11 @@ def parse_args():
         help="Show current balances.",
     )
     _ = balances_parser
+    profit_parser = subparsers.add_parser(
+        "profit",
+        help="Show total profit.",
+    )
+    _ = profit_parser
     orderbook_parser = subparsers.add_parser(
         "orderbook",
         help="Get the Order Book for the BUSDUSDT market.",
@@ -101,9 +106,40 @@ def parse_args():
     return args
 
 
+def prepare_env(loop):
+    # Setup mongodb connection (pool).
+    try:
+        init_db_instance(
+            client_conf={
+                "endpoint": conf["mongodb"]["endpoint"],
+                "username": conf["mongodb"]["username"],
+                "password": conf["mongodb"]["password"],
+                "auth_mechanism": conf["mongodb"]["auth_mechanism"],
+                "database": conf["mongodb"]["database"],
+                "collection": conf["mongodb"]["collection"],
+            },
+            io_loop=loop,
+        )
+    except Exception as e:
+        loguru_logger.error(f"Failed to setup mongodb connection (pool), err{e}.")
+        sys.exit(-1)
+    task = asyncio.ensure_future(db_instance().is_connected())
+    connected = loop.run_until_complete(task)
+    if connected:
+        loguru_logger.info("Setup mongodb connection (pool).")
+    else:
+        loguru_logger.error("Cannot setup mongodb connection (pool).")
+        sys.exit(-1)
+
+
+def clear_env():
+    # Release mongodb connection (pool).
+    db_instance().close()
+
+
 if __name__ == "__main__":
     args = parse_args()
-    if args.action not in ["balances", "orderbook", "orders", "swap", "check", "cancel"]:
+    if args.action not in ["balances", "profit", "orderbook", "orders", "swap", "check", "cancel"]:
         loguru_logger(f"Unknown action: {args.action}")
     action = args.action
     
@@ -123,6 +159,10 @@ if __name__ == "__main__":
             if action == "balances":
                 task = asyncio.ensure_future(bot.show_balances())
                 loop.run_until_complete(task)
+            elif action == "profit":
+                prepare_env(loop=loop)
+                task = asyncio.ensure_future(bot.show_profit())
+                loop.run_until_complete(task)
             elif action == "orderbook":
                 task = asyncio.ensure_future(bot.orderbook_of_busd_usdt())
                 loop.run_until_complete(task)
@@ -130,30 +170,7 @@ if __name__ == "__main__":
                 task = asyncio.ensure_future(bot.show_recent_n_orders(n=args.limit))
                 loop.run_until_complete(task)
             elif action == "swap":
-                # Setup mongodb connection (pool).
-                try:
-                    init_db_instance(
-                        client_conf={
-                            "endpoint": conf["mongodb"]["endpoint"],
-                            "username": conf["mongodb"]["username"],
-                            "password": conf["mongodb"]["password"],
-                            "auth_mechanism": conf["mongodb"]["auth_mechanism"],
-                            "database": conf["mongodb"]["database"],
-                            "collection": conf["mongodb"]["collection"],
-                        },
-                        io_loop=loop,
-                    )
-                except Exception as e:
-                    loguru_logger.error(f"Failed to setup mongodb connection (pool), err{e}.")
-                    sys.exit(-1)
-                task = asyncio.ensure_future(db_instance().is_connected())
-                connected = loop.run_until_complete(task)
-                if connected:
-                    loguru_logger.info("Setup mongodb connection (pool).")
-                else:
-                    loguru_logger.error("Cannot setup mongodb connection (pool).")
-                    sys.exit(-1)
-
+                prepare_env(loop=loop)
                 if args.when is not None and args.when > 0:
                     task = asyncio.ensure_future(bot.swap(when=args.when))
                     loop.run_until_complete(task)
@@ -174,9 +191,8 @@ if __name__ == "__main__":
         tasks = []
         if _cleanup_coroutine is not None:
             tasks.append(asyncio.ensure_future(_cleanup_coroutine()))
-        if action == "swap":
-            # Release mongodb connection (pool).
-            db_instance().close()
+        if action == "profit" or action == "swap":
+            clear_env()
         # NOTE: Wait 250 ms for the underlying connections to close.
         # https://docs.aiohttp.org/en/stable/client_advanced.html#Graceful_Shutdown
         loop.run_until_complete(asyncio.sleep(0.250))
