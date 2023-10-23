@@ -13,9 +13,9 @@ import sys
 import time
 import traceback
 
+from internal.bot.grid_trading_bot import BinanceGridTradingBot
 from internal.db import init_instance as init_db_instance
 from internal.db import instance as db_instance
-from internal.grid_trading_bot import BinanceGridTradingBot
 from internal.utils.loguru_logger import init_global_logger
 from internal.utils.global_vars import set_config, get_config
 from loguru import logger as loguru_logger

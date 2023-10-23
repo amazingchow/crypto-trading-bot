@@ -6,7 +6,7 @@ import tabulate
 import time
 
 from binance.client import AsyncClient as AsyncBinanceRestAPIClient
-from binance.exceptions import BinanceAPIException, BinanceRequestException, BinanceOrderException
+from binance.exceptions import BinanceAPIException, BinanceRequestException
 from binance.streams import BinanceSocketManager
 from colorama import Fore, Style
 from internal.db import instance as db_instance
@@ -469,23 +469,8 @@ class BinanceGridTradingBot(metaclass=Singleton):
                 if inner_resp is not None:
                     resp = inner_resp
         loguru_logger.debug(f"Spent {initial_usdt_spent:.1f} USDT at first.")
-        return
-
-        _latest_price = None
-        try:
-            res = await self._api_aync_client.get_symbol_ticker(
-                symbol=sym,
-            )
-            _latest_price = float(res["price"])
-        except BinanceRequestException as e:
-            loguru_logger.error("Failed to get latest price for symbol:{}, err:{}.".format(sym, e))
-        except BinanceAPIException as e:
-            loguru_logger.error("Failed to get latest price for symbol:{}, err:{}.".format(sym, e))
-        finally:
-            if _latest_price is not None:
-                latest_price = _latest_price
-        loguru_logger.debug("Latest price for symbol:{} is {}".format(sym, latest_price))
-
+        
+        # TODO: ...
         for trading_price in trade_price_list:
             side = "BUY"
             if trading_price < latest_price:
