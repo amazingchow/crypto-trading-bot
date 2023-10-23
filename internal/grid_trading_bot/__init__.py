@@ -87,7 +87,7 @@ class BinanceGridTradingBot(metaclass=Singleton):
             await self._aclient.close_connection()
 
     @property
-    def lower_range_price(self):
+    def lower_range_price(self) -> float:
         """
         区间下限价格（USDT计价）
         """
@@ -98,7 +98,7 @@ class BinanceGridTradingBot(metaclass=Singleton):
         self._lower_range_price = x
 
     @property
-    def upper_range_price(self):
+    def upper_range_price(self) -> float:
         """
         区间上限价格（USDT计价）
         """
@@ -109,7 +109,7 @@ class BinanceGridTradingBot(metaclass=Singleton):
         self._upper_range_price = x
 
     @property
-    def grids(self):
+    def grids(self) -> int:
         """
         网格数量（50-5000）
         """
@@ -120,7 +120,7 @@ class BinanceGridTradingBot(metaclass=Singleton):
         self._grids = x
 
     @property
-    def total_investment(self):
+    def total_investment(self) -> int:
         """
         总投资额（USDT计价）
         """
@@ -370,7 +370,7 @@ class BinanceGridTradingBot(metaclass=Singleton):
                 symbol=sym,
                 side="SELL",
                 type="MARKET",
-                quantity=decimal.Decimal("{:3f}".format(qty)),
+                quantity=decimal.Decimal("{:.3f}".format(qty)),
                 newOrderRespType="RESULT",
                 recvWindow=2000,
             )
@@ -402,51 +402,74 @@ class BinanceGridTradingBot(metaclass=Singleton):
             await asyncio.sleep(0.001)
             now = time.time()
 
-
-
         step_price = (self._upper_range_price - self._lower_range_price) // self._grids
-        trading_capacity = self._total_investment // self._grids
-        trading_price_list = [self._lower_range_price + i * step_price for i in range(self._grids)]
-        return
+        single_trade_capacity = self._total_investment // self._grids
+        trade_price_list = [self._lower_range_price + i * step_price for i in range(self._grids)]
 
-        # TODO...
         latest_price = None
         try:
-            res = await self._api_aync_client.get_symbol_ticker(
+            resp = await self._aclient.get_symbol_ticker(
                 symbol=sym,
             )
-            latest_price = float(res["price"])
-        except BinanceRequestException as e:
-            loguru_logger.error("Failed to get latest price for symbol:{}, err:{}.".format(sym, e))
-        except BinanceAPIException as e:
-            loguru_logger.error("Failed to get latest price for symbol:{}, err:{}.".format(sym, e))
+            latest_price = float(resp["price"])
+        except (BinanceRequestException, BinanceAPIException) as e:
+            loguru_logger.error(f"Failed to get latest price for symbol:{sym}, binance's exception:{e}.")
+        except Exception as e:
+            loguru_logger.error(f"Failed to get latest price for symbol:{sym}, internal exception:{e}.")
         finally:
             if latest_price is None:
-                loguru_logger.error("Failed to get latest price for symbol:{}.".format(sym))
                 return
-        loguru_logger.debug("Latest price for symbol:{} is {}".format(sym, latest_price))
+        
+        loguru_logger.debug(f"Latest price for symbol:{sym} is {latest_price}")
+        if latest_price > self._upper_range_price:
+            loguru_logger.warning(f"No need to trade, since latest price ({latest_price}) is greater than upper range price ({self._upper_range_price}).")
+            return
+        if latest_price < self._lower_range_price:
+            loguru_logger.warning(f"No need to trade, since latest price ({latest_price}) is less than lower range price ({self._lower_range_price}).")
+            return
 
-        initial_tokens_spent = (self._upper_range_price - latest_price) / (self._upper_range_price - self._lower_range_price) * self._total_investment
-        done = False
+        initial_usdt_spent = (self._upper_range_price - latest_price) / (self._upper_range_price - self._lower_range_price) * self._total_investment
+        loguru_logger.debug(f"Try to spend {initial_usdt_spent:.1f} USDT at first...")
+        order_id = gen_n_digit_nums_and_letters(22)
+        resp = None
         try:
-            res = await self._api_aync_client.create_order(
+            resp = await self._aclient.create_order(
                 symbol=sym,
                 side="BUY",
                 type="MARKET",
-                quoteOrderQty=decimal.Decimal("{:3f}".format(initial_tokens_spent)),
-                newOrderRespType="RESULT",
+                quoteOrderQty=decimal.Decimal(f"{initial_usdt_spent:.1f}"),
+                newClientOrderId=order_id,
                 recvWindow=2000,
             )
-            loguru_logger.debug("Created order for initial tokens, res:{}", res)
-            if res["status"] == "FILLED":
-                done = True
-        except BinanceRequestException as e:
-            loguru_logger.error("Failed to create order for symbol:{}, err:{}.".format(sym, e))
-        except BinanceAPIException as e:
-            loguru_logger.error("Failed to create order for symbol:{}, err:{}.".format(sym, e))
+            loguru_logger.debug(f"Order:{resp}")
+        except (BinanceRequestException, BinanceAPIException) as e:
+            loguru_logger.error(f"Failed to create spot-market-order for symbol:{sym}, binance's exception:{e}.")
+        except Exception as e:
+            loguru_logger.error(f"Failed to create spot-market-order for symbol:{sym}, internal exception:{e}.")
         finally:
-            if not done:
+            if resp is None:
                 return
+        
+        while 1:
+            if resp["status"] == "FILLED":
+                break
+            await asyncio.sleep(3)
+            try:
+                inner_resp = await self._aclient.get_order(
+                    symbol=sym,
+                    origClientOrderId=order_id,
+                    recvWindow=5000,
+                )
+                loguru_logger.debug(f"Order:{inner_resp}")
+            except (BinanceRequestException, BinanceAPIException) as e:
+                loguru_logger.error(f"Failed to check order<order_id:{order_id}>, binance's exception:{e}.")
+            except Exception as e:
+                loguru_logger.error(f"Failed to check order<order_id:{order_id}>, internal exception:{e}.")
+            finally:
+                if inner_resp is not None:
+                    resp = inner_resp
+        loguru_logger.debug(f"Spent {initial_usdt_spent:.1f} USDT at first.")
+        return
 
         _latest_price = None
         try:
@@ -463,7 +486,7 @@ class BinanceGridTradingBot(metaclass=Singleton):
                 latest_price = _latest_price
         loguru_logger.debug("Latest price for symbol:{} is {}".format(sym, latest_price))
 
-        for trading_price in trading_price_list:
+        for trading_price in trade_price_list:
             side = "BUY"
             if trading_price < latest_price:
                 side = "BUY"
@@ -474,8 +497,8 @@ class BinanceGridTradingBot(metaclass=Singleton):
                     symbol=sym,
                     side=side,
                     type="LIMIT",
-                    quoteOrderQty=decimal.Decimal("{:3f}".format(trading_capacity)),
-                    price=decimal.Decimal("{:3f}".format(trading_price)),
+                    quoteOrderQty=decimal.Decimal("{:.3f}".format(single_trade_capacity)),
+                    price=decimal.Decimal("{:.3f}".format(trading_price)),
                     newOrderRespType="RESULT",
                     newClientOrderId=self._new_client_order_id(),
                     recvWindow=2000,
