@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import os
-import pprint
 import tabulate
 import time
 
@@ -130,9 +129,12 @@ class BinanceSimpleTradingBot(metaclass=Singleton):
             loguru_logger.error(f"Failed to get recent {n} orders, internal exception:{e}.")
         finally:
             if orders is not None:
-                print(f"{Fore.GREEN} ======================================= RECENT N ORDERS ======================================= {Style.RESET_ALL}")
+                print(f"{Fore.GREEN} ======================================= RECENT N SPOT MARKET ORDERS ======================================= {Style.RESET_ALL}")
                 table = [["Symbol", "ClientOrderId", "OrigQty", "Side", "Price", "Status", "Time"]]
+                orders = sorted(orders, key=lambda x: x["time"], reverse=True)
                 for order in orders:
+                    if order["type"] != "MARKET":
+                        continue
                     table.append([
                         order["symbol"],
                         order["clientOrderId"],
@@ -144,7 +146,7 @@ class BinanceSimpleTradingBot(metaclass=Singleton):
                     ])
                 table_output = tabulate.tabulate(table, headers="firstrow", tablefmt="mixed_grid", showindex="always")
                 print(f"{Fore.CYAN}{table_output}{Style.RESET_ALL}")
-                print(f"{Fore.GREEN} ======================================= RECENT N ORDERS ======================================= {Style.RESET_ALL}")
+                print(f"{Fore.GREEN} ======================================= RECENT N SPOT MARKET ORDERS ======================================= {Style.RESET_ALL}")
 
     @timeit
     async def trade(self, sym: str, base_qty: float = 0, quote_qty: float = 0, side: str = "BUY") -> bool:
@@ -169,9 +171,20 @@ class BinanceSimpleTradingBot(metaclass=Singleton):
                     recvWindow=2000,
                 )
             loguru_logger.info(f"Traded spot-market-order<order_id:{order_id}>.")
-            print(f"{Fore.GREEN} ======================================= NEW ORDER ======================================= {Style.RESET_ALL}")
-            print(f"{Fore.CYAN}{pprint.pformat(resp, indent=1, depth=1, compact=True)}{Style.RESET_ALL}")
-            print(f"{Fore.GREEN} ======================================= NEW ORDER ======================================= {Style.RESET_ALL}")
+            print(f"{Fore.GREEN} ======================================= NEW SPOT MARKET ORDER ======================================= {Style.RESET_ALL}")
+            table = [["Symbol", "ClientOrderId", "OrigQty", "Side", "Price", "Status", "TransactTime"]]
+            table.append([
+                resp["symbol"],
+                resp["clientOrderId"],
+                resp["origQty"],
+                resp["side"],
+                resp["price"],
+                resp["status"],
+                resp["transactTime"],
+            ])
+            table_output = tabulate.tabulate(table, headers="firstrow", tablefmt="mixed_grid", showindex="always")
+            print(f"{Fore.CYAN}{table_output}{Style.RESET_ALL}")
+            print(f"{Fore.GREEN} ======================================= NEW SPOT MARKET ORDER ======================================= {Style.RESET_ALL}")
             done = True
         except (BinanceRequestException, BinanceAPIException, BinanceOrderException) as e:
             loguru_logger.error(f"Failed to trade spot-market-order<order_id:{order_id}>, binance's exception:{e}.")

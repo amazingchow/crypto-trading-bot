@@ -20,16 +20,14 @@ yaml_fmt:
 
 .PHONY: lint
 lint: ### Lint code.
-	@pyflakes run_grid_trading_bot.py
-	@pyflakes run_stagging_bot.py
+	@pyflakes *.py
 	@pyflakes internal/*/*.py
-	@pycodestyle run_grid_trading_bot.py --ignore=W293,W503,E266,E402,E501
-	@pycodestyle run_stagging_bot.py --ignore=W293,W503,E266,E402,E501
+	@pycodestyle *.py --ignore=W293,W503,E266,E402,E501
 	@pycodestyle internal/*/*.py --ignore=W293,W503,E266,E402,E501
 
 .PHONY: local_run
 local_run:
-	python run_grid_trading_bot.py trade --symbol=BTCUSDT --lower_range_price=29000 --upper_range_price=31000 --grids=2000 --total_investment=10000 --elapse=1
+	python run_grid_trading_bot.py trade --symbol=BTCUSDT --lower_range_price=30000 --upper_range_price=50000 --grids=2000 --total_investment=30000 --elapse=1
 
 .PHONY: run_compose
 run_compose:

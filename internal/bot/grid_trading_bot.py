@@ -2,6 +2,7 @@
 import asyncio
 import decimal
 import os
+import shelve
 import tabulate
 import time
 
@@ -59,7 +60,7 @@ class BinanceGridTradingBot(metaclass=Singleton):
             testnet=use_testnet,
         )
         self._sock_mgr = BinanceSocketManager(client=self._aclient)
-        self._kline_q = asyncio.Queue()
+        self._trade_data_q = asyncio.Queue()
 
         self._inited = True
 
@@ -130,7 +131,29 @@ class BinanceGridTradingBot(metaclass=Singleton):
     def total_investment(self, x: int):
         self._total_investment = x
 
-    async def show_balances(self, sym: str):
+    @property
+    def base_asset(self) -> int:
+        """
+        标的资产代币
+        """
+        return self._base_asset
+
+    @base_asset.setter
+    def base_asset(self, x: str):
+        self._base_asset = x
+
+    @property
+    def quote_asset(self) -> int:
+        """
+        报价资产代币
+        """
+        return self._quote_asset
+
+    @quote_asset.setter
+    def quote_asset(self, x: str):
+        self._quote_asset = x
+
+    async def show_balances(self):
         """Show current balances."""
         account = None
         try:
@@ -140,12 +163,11 @@ class BinanceGridTradingBot(metaclass=Singleton):
         except Exception as e:
             loguru_logger.error(f"Failed to get balances, internal exception:{e}.")
         finally:
-            base_asset = sym[:-4]
             if account is not None:
                 print(f"{Fore.GREEN} ======================================= BALANCES ======================================= {Style.RESET_ALL}")
                 table = [["Asset", "Free", "Locked"]]
                 for balance in account["balances"]:
-                    if balance["asset"] in [base_asset, "USDT"]:
+                    if balance["asset"] in [self._base_asset, self._quote_asset]:
                         table.append([balance["asset"], balance["free"], balance["locked"]])
                 table_output = tabulate.tabulate(table, headers="firstrow", tablefmt="mixed_grid", showindex="always")
                 print(f"{Fore.CYAN}{table_output}{Style.RESET_ALL}")
@@ -160,38 +182,58 @@ class BinanceGridTradingBot(metaclass=Singleton):
             print(f"{Fore.CYAN} Cumulative Arbitrage {cnt} Times. {Style.RESET_ALL}")
             print(f"{Fore.GREEN} ======================================= PROFIT ======================================= {Style.RESET_ALL}")
 
-    @timeit
-    async def show_recent_n_orders(self, sym: str, n: int = 1):
-        """Get recent n orders (include active, canceled, or filled) for BTCUSDT."""
-        orders = None
+    async def show_symbol_information(self, sym: str):
+        """Show information of coin symbol, like BTCUSDT.
+
+        LOT_SIZE - The Lot Size filter defines the limits on the quantity for both Limit and Market orders for a symbol.
+        NOTIONAL - The Notional filter defines the value calculated in the quote asset for a symbol.
+        """
+        info = None
         try:
-            orders = await self._aclient.get_all_orders(
-                symbol=sym,
-                limit=n,
-                recvWindow=5000,
-            )
-            orders = sorted(orders, key=lambda x: x["time"], reverse=True)
+            info = await self._aclient.get_symbol_info(symbol=sym)
         except (BinanceRequestException, BinanceAPIException) as e:
-            loguru_logger.error(f"Failed to get recent {n} orders, binance's exception:{e}.")
+            loguru_logger.error(f"Failed to get information of symbol:{sym}, binance's exception:{e}.")
         except Exception as e:
-            loguru_logger.error(f"Failed to get recent {n} orders, internal exception:{e}.")
+            loguru_logger.error(f"Failed to get information of symbol:{sym}, internal exception:{e}.")
         finally:
-            if orders is not None:
-                print(f"{Fore.GREEN} ======================================= RECENT N ORDERS ======================================= {Style.RESET_ALL}")
-                table = [["Symbol", "ClientOrderId", "OrigQty", "Side", "Price", "Status", "Time"]]
-                for order in orders:
-                    table.append([
-                        order["symbol"],
-                        order["clientOrderId"],
-                        order["origQty"],
-                        order["side"],
-                        order["price"],
-                        order["status"],
-                        order["time"],
-                    ])
+            if info is not None:
+                print(f"{Fore.GREEN} ======================================= SYMBOL INFORMATION ======================================= {Style.RESET_ALL}")
+                table = [["Symbol", "BaseAsset", "BaseAssetPrecision", "QuoteAsset", "QuotePrecision"]]
+                table.append([
+                    info["symbol"],
+                    info["baseAsset"],
+                    info["baseAssetPrecision"],
+                    info["quoteAsset"],
+                    info["quotePrecision"],
+                ])
                 table_output = tabulate.tabulate(table, headers="firstrow", tablefmt="mixed_grid", showindex="always")
                 print(f"{Fore.CYAN}{table_output}{Style.RESET_ALL}")
-                print(f"{Fore.GREEN} ======================================= RECENT N ORDERS ======================================= {Style.RESET_ALL}")
+                print(f"{Fore.GREEN} ======================================= SYMBOL INFORMATION ======================================= {Style.RESET_ALL}")
+                print(f"{Fore.GREEN} ======================================= SYMBOL EXTRA INFORMATION ======================================= {Style.RESET_ALL}")
+                extra = {}
+                for filter in info["filters"]:
+                    if filter["filterType"] == "LOT_SIZE":
+                        extra["LOT_SIZE.MinQty"] = filter["minQty"]
+                        extra["LOT_SIZE.MaxQty"] = filter["maxQty"]
+                    elif filter["filterType"] == "NOTIONAL":
+                        extra["NOTIONAL.MinNotional"] = filter["minNotional"]
+                        extra["NOTIONAL.MaxNotional"] = filter["maxNotional"]
+                    elif filter["filterType"] == "MAX_NUM_ORDERS":
+                        extra["MAX_NUM_ORDERS"] = filter["maxNumOrders"]
+                    elif filter["filterType"] == "MAX_NUM_ALGO_ORDERS":
+                        extra["MAX_NUM_ALGO_ORDERS"] = filter["maxNumAlgoOrders"]
+                table = [["LOT_SIZE.MinQty", "LOT_SIZE.MaxQty", "NOTIONAL.MinNotional", "NOTIONAL.MaxNotional", "MAX_NUM_ORDERS", "MAX_NUM_ALGO_ORDERS"]]
+                table.append([
+                    extra.get("LOT_SIZE.MinQty", ""),
+                    extra.get("LOT_SIZE.MaxQty", ""),
+                    extra.get("NOTIONAL.MinNotional", ""),
+                    extra.get("NOTIONAL.MaxNotional", ""),
+                    extra.get("MAX_NUM_ORDERS", ""),
+                    extra.get("MAX_NUM_ALGO_ORDERS", ""),
+                ])
+                table_output = tabulate.tabulate(table, headers="firstrow", tablefmt="mixed_grid", showindex="always")
+                print(f"{Fore.CYAN}{table_output}{Style.RESET_ALL}")
+                print(f"{Fore.GREEN} ======================================= SYMBOL EXTRA INFORMATION ======================================= {Style.RESET_ALL}")
 
     @timeit
     async def latest_orderbook(self, sym: str, verbose: bool = True) -> Optional[Dict[str, Any]]:
@@ -222,6 +264,40 @@ class BinanceGridTradingBot(metaclass=Singleton):
                     print(f"{Fore.CYAN}{table_output}{Style.RESET_ALL}")
                     print(f"{Fore.GREEN} ======================================= {sym} ORDER BOOK ======================================= {Style.RESET_ALL}")
             return orderbook
+
+    @timeit
+    async def show_recent_n_orders(self, sym: str, n: int = 1):
+        """Get recent n orders (include active, canceled, or filled) for BTCUSDT."""
+        orders = None
+        try:
+            orders = await self._aclient.get_all_orders(
+                symbol=sym,
+                limit=n,
+                recvWindow=5000,
+            )
+            orders = sorted(orders, key=lambda x: x["time"], reverse=True)
+        except (BinanceRequestException, BinanceAPIException) as e:
+            loguru_logger.error(f"Failed to get recent {n} orders, binance's exception:{e}.")
+        except Exception as e:
+            loguru_logger.error(f"Failed to get recent {n} orders, internal exception:{e}.")
+        finally:
+            if orders is not None:
+                print(f"{Fore.GREEN} ======================================= RECENT N ORDERS ======================================= {Style.RESET_ALL}")
+                table = [["Symbol", "ClientOrderId", "OrigQty", "Side", "Price", "Status", "Time"]]
+                orders = sorted(orders, key=lambda x: x["time"], reverse=True)
+                for order in orders:
+                    table.append([
+                        order["symbol"],
+                        order["clientOrderId"],
+                        order["origQty"],
+                        order["side"],
+                        order["price"],
+                        order["status"],
+                        order["time"],
+                    ])
+                table_output = tabulate.tabulate(table, headers="firstrow", tablefmt="mixed_grid", showindex="always")
+                print(f"{Fore.CYAN}{table_output}{Style.RESET_ALL}")
+                print(f"{Fore.GREEN} ======================================= RECENT N ORDERS ======================================= {Style.RESET_ALL}")
 
     @timeit
     async def check_order(self, sym: str, order_id: str, expected_status: str = "FILLED", verbose: bool = True) -> bool:
@@ -343,48 +419,127 @@ class BinanceGridTradingBot(metaclass=Singleton):
                 locked_amount = asset["locked"]
             return (free_amount, locked_amount)
 
-    async def feed_klines(self, sym: Optional[str] = None, interval: Optional[str] = "1m") -> NoReturn:
+    async def _feed_klines(self, sym: str, interval: str = AsyncBinanceRestAPIClient.KLINE_INTERVAL_1MINUTE) -> NoReturn:
         sock_client = self._sock_mgr.kline_socket(symbol=sym, interval=interval)
         await sock_client.connect()
-        loguru_logger.debug("Ready to receive k-lines<symbol:{}, interval:{}>...".format(sym, interval))
+        loguru_logger.debug(f"Ready to receive k-lines<symbol:{sym}, interval:{interval}>...")
         while 1:
-            res = await sock_client.recv()
-            loguru_logger.debug("Received one k-line<symbol:{}, interval:{}>.".format(sym, interval))
-            loguru_logger.debug("====================================================")
-            loguru_logger.debug(res)
-            loguru_logger.debug("====================================================")
-            self._kline_q.put_nowait({"symbol": res["s"], "st_timestamp": res["k"]["t"], "ed_timestamp": res["k"]["T"], "kline": res["k"]})
+            try:
+                msg = await sock_client.recv()
+                if msg is not None and msg["k"] is not None:
+                    print(f"{Fore.GREEN} ======================================= {interval} KLINE FOR {sym} ======================================= {Style.RESET_ALL}")
+                    table = [["St", "Ed", "Open", "Close", "High", "Low", "Volume", "Quote Volume"]]
+                    table.append([msg["k"]["t"], msg["k"]["T"], msg["k"]["o"], msg["k"]["c"], msg["k"]["h"], msg["k"]["l"], msg["k"]["v"], msg["k"]["q"]])
+                    table_output = tabulate.tabulate(table, headers="firstrow", tablefmt="mixed_grid")
+                    print(f"{Fore.CYAN}{table_output}{Style.RESET_ALL}")
+                    print(f"{Fore.GREEN} ======================================= {interval} KLINE FOR {sym} ======================================= {Style.RESET_ALL}")
+            except Exception as e:
+                loguru_logger.error(f"Failed to receive k-lines<symbol:{sym}, interval:{interval}> anymore, binance's exception:{e}.")
+                break
 
-    async def persist_klines(self, sym: Optional[str] = None, interval: Optional[str] = "1m") -> NoReturn:
-        loguru_logger.debug("Ready to persist k-lines<symbol:{}, interval:{}>...".format(sym, interval))
+    async def _feed_trade_data(self, sym: str) -> NoReturn:
+        sock_client = self._sock_mgr.trade_socket(symbol=sym)
+        await sock_client.connect()
+        loguru_logger.debug(f"Ready to receive trade data<symbol:{sym}>...")
         while 1:
-            kline = await self._kline_q.get()
-            self._kline_q.task_done()
-            loguru_logger.debug("Prepare to persist one k-line<symbol:{}, interval:{}>.".format(sym, interval))
-            await self._store.insert_kline(sym=sym, interval=interval, kline=kline)
+            try:
+                msg = await sock_client.recv()
+                if msg is not None:
+                    print(f"{Fore.GREEN} ======================================= TRADE DATA FOR {sym} ======================================= {Style.RESET_ALL}")
+                    table = [["Trade ID", "Price", "Quantity", "Buyer Order Id", "Seller Order Id", "Trade Time"]]
+                    table.append([msg["t"], msg["p"], msg["q"], msg["b"], msg["a"], msg["T"]])
+                    table_output = tabulate.tabulate(table, headers="firstrow", tablefmt="mixed_grid")
+                    print(f"{Fore.CYAN}{table_output}{Style.RESET_ALL}")
+                    print(f"{Fore.GREEN} ======================================= TRADE DATA FOR {sym} ======================================= {Style.RESET_ALL}")
+                    self._trade_data_q.put_nowait(msg)
+            except Exception as e:
+                loguru_logger.error(f"Failed to receive trade data<symbol:{sym}> anymore, binance's exception:{e}.")
+                break
 
-    async def swap_2_usdt(self, sym: Optional[str] = None, qty: Optional[int] = None):
+    async def _buy_base_asset(self, sym: str, quote_qty: float, price: str) -> Tuple[str, str, bool]:
         done = False
+        client_order_id = gen_n_digit_nums_and_letters(22)
+        binance_order_id = ""
         try:
-            res = await self._api_aync_client.create_order(
+            resp = await self._aclient.create_order(
                 symbol=sym,
-                side="SELL",
-                type="MARKET",
-                quantity=decimal.Decimal("{:.3f}".format(qty)),
-                newOrderRespType="RESULT",
+                side="BUY",
+                type="LIMIT",
+                quantity=decimal.Decimal(f"{quote_qty / price:.5f}"),
+                price=price,
+                timeInForce="GTC",
+                newClientOrderId=client_order_id,
                 recvWindow=2000,
             )
-            if res["status"] == "FILLED":
-                done = True
+            done = True
+            if resp is not None:
+                binance_order_id = resp["orderId"]
+                print(f"resp == {resp}")
+                await db_instance().add_new_spot_limit_order(order=resp)
         except BinanceRequestException as e:
-            loguru_logger.error("Failed to create order for symbol:{}, err:{}.".format(sym, e))
+            loguru_logger.error(f"Failed to create spot-limit-order for symbol:{sym}, err:{e}.")
         except BinanceAPIException as e:
-            loguru_logger.error("Failed to create order for symbol:{}, err:{}.".format(sym, e))
+            loguru_logger.error(f"Failed to create spot-limit-order for symbol:{sym}, err:{e}.")
         finally:
-            return done
+            if done:
+                loguru_logger.debug(f"Created spot-limit-order<order_id:{client_order_id}> for symbol:{sym}.")             
+            return (client_order_id, binance_order_id, done)
+
+    async def _sell_base_asset(self, sym: str, base_qty: float, price: str) -> Tuple[str, str, bool]:
+        done = False
+        client_order_id = gen_n_digit_nums_and_letters(22)
+        binance_order_id = ""
+        try:
+            resp = await self._aclient.create_order(
+                symbol=sym,
+                side="SELL",
+                type="LIMIT",
+                quantity=decimal.Decimal(f"{base_qty:.5f}"),
+                price=price,
+                timeInForce="GTC",
+                newClientOrderId=client_order_id,
+                recvWindow=2000,
+            )
+            done = True
+            if resp is not None:
+                binance_order_id = resp["orderId"]
+                print(f"resp == {resp}")
+                await db_instance().add_new_spot_limit_order(order=resp)
+        except BinanceRequestException as e:
+            loguru_logger.error(f"Failed to create spot-limit-order for symbol:{sym}, err:{e}.")
+        except BinanceAPIException as e:
+            loguru_logger.error(f"Failed to create spot-limit-order for symbol:{sym}, err:{e}.")
+        finally:
+            if done:
+                loguru_logger.debug(f"Created spot-limit-order<order_id:{client_order_id}> for symbol:{sym}.")      
+            return (client_order_id, binance_order_id, done)
+
+    # async def _do_grid_trading(self, sym: str):
+    #     for trading_price in target_price_list:
+    #         side = "BUY"
+    #         if trading_price < latest_price:
+    #             side = "BUY"
+    #         elif trading_price > latest_price:
+    #             side = "SELL"
+    #         try:
+    #             res = await self._api_aync_client.create_order(
+    #                 symbol=sym,
+    #                 side=side,
+    #                 type="LIMIT",
+    #                 quoteOrderQty=decimal.Decimal("{:.3f}".format(single_trading_capacity)),
+    #                 price=decimal.Decimal("{:.3f}".format(trading_price)),
+    #                 newOrderRespType="RESULT",
+    #                 newClientOrderId=self._new_client_order_id(),
+    #                 recvWindow=2000,
+    #             )
+    #             loguru_logger.debug("Created order, res:{}", res)
+    #         except BinanceRequestException as e:
+    #             loguru_logger.error("Failed to create order for symbol:{}, err:{}.".format(sym, e))
+    #         except BinanceAPIException as e:
+    #             loguru_logger.error("Failed to create order for symbol:{}, err:{}.".format(sym, e))
 
     @timeit
-    async def trade(self, sym: str, when: int, retry_cnt: int = 1):
+    async def trade(self, sym: str, when: int):
         """Run grid-trading for a long time."""
         usdt_free_amount, usdt_locked_amount = await self.usdt_asset()
         if usdt_free_amount is None or usdt_locked_amount is None:
@@ -402,10 +557,22 @@ class BinanceGridTradingBot(metaclass=Singleton):
             await asyncio.sleep(0.001)
             now = time.time()
 
-        step_price = (self._upper_range_price - self._lower_range_price) // self._grids
-        single_trade_capacity = self._total_investment // self._grids
-        trade_price_list = [self._lower_range_price + i * step_price for i in range(self._grids)]
+        self._step_price = (self._upper_range_price - self._lower_range_price) // self._grids
+        self._single_trading_capacity = self._total_investment // self._grids
+        self._target_price_list = [self._lower_range_price + i * self._step_price for i in range(self._grids)]
+        print(f"{Fore.GREEN} ======================================= GRID TRADING INITIAL SETTINGS ======================================= {Style.RESET_ALL}")
+        print(f"{Fore.CYAN} base_asset              : {self._base_asset} {Style.RESET_ALL}")
+        print(f"{Fore.CYAN} quote_asset             : {self._quote_asset} {Style.RESET_ALL}")
+        print(f"{Fore.CYAN} lower_range_price       : {self._lower_range_price} {Style.RESET_ALL}")
+        print(f"{Fore.CYAN} upper_range_price       : {self._upper_range_price} {Style.RESET_ALL}")
+        print(f"{Fore.CYAN} grids                   : {self._grids} {Style.RESET_ALL}")
+        print(f"{Fore.CYAN} total_investment        : {self._total_investment} {Style.RESET_ALL}")
+        print(f"{Fore.CYAN} step_price              : {self._step_price} {Style.RESET_ALL}")
+        print(f"{Fore.CYAN} single_trading_capacity : {self._single_trading_capacity} {Style.RESET_ALL}")
+        print(f"{Fore.CYAN} target_price_list       : {self._target_price_list[:3]} ... {self._target_price_list[-3:]} {Style.RESET_ALL}")
+        print(f"{Fore.GREEN} ======================================= GRID TRADING INITIAL SETTINGS ======================================= {Style.RESET_ALL}")
 
+        print(f"{Fore.GREEN} ======================================= GRID TRADING INITIAL TRADING ======================================= {Style.RESET_ALL}")
         latest_price = None
         try:
             resp = await self._aclient.get_symbol_ticker(
@@ -419,13 +586,12 @@ class BinanceGridTradingBot(metaclass=Singleton):
         finally:
             if latest_price is None:
                 return
-        
-        loguru_logger.debug(f"Latest price for symbol:{sym} is {latest_price}")
+            loguru_logger.debug(f"Latest price for symbol:{sym} is ${latest_price:.1f}")
         if latest_price > self._upper_range_price:
-            loguru_logger.warning(f"No need to trade, since latest price ({latest_price}) is greater than upper range price ({self._upper_range_price}).")
+            loguru_logger.warning(f"No need to trade, since latest price ({latest_price:.1f}) is greater than upper range price ({self._upper_range_price:.1f}).")
             return
         if latest_price < self._lower_range_price:
-            loguru_logger.warning(f"No need to trade, since latest price ({latest_price}) is less than lower range price ({self._lower_range_price}).")
+            loguru_logger.warning(f"No need to trade, since latest price ({latest_price:.1f}) is less than lower range price ({self._lower_range_price:.1f}).")
             return
 
         initial_usdt_spent = (self._upper_range_price - latest_price) / (self._upper_range_price - self._lower_range_price) * self._total_investment
@@ -441,7 +607,7 @@ class BinanceGridTradingBot(metaclass=Singleton):
                 newClientOrderId=order_id,
                 recvWindow=2000,
             )
-            loguru_logger.debug(f"Order:{resp}")
+            loguru_logger.debug(f"Placed order<order_id:{order_id}>.")
         except (BinanceRequestException, BinanceAPIException) as e:
             loguru_logger.error(f"Failed to create spot-market-order for symbol:{sym}, binance's exception:{e}.")
         except Exception as e:
@@ -450,17 +616,19 @@ class BinanceGridTradingBot(metaclass=Singleton):
             if resp is None:
                 return
         
+        initial_base_asset_qty = None
         while 1:
             if resp["status"] == "FILLED":
+                initial_base_asset_qty = float(resp["executedQty"])
                 break
             await asyncio.sleep(3)
+            
             try:
                 inner_resp = await self._aclient.get_order(
                     symbol=sym,
                     origClientOrderId=order_id,
                     recvWindow=5000,
                 )
-                loguru_logger.debug(f"Order:{inner_resp}")
             except (BinanceRequestException, BinanceAPIException) as e:
                 loguru_logger.error(f"Failed to check order<order_id:{order_id}>, binance's exception:{e}.")
             except Exception as e:
@@ -468,28 +636,53 @@ class BinanceGridTradingBot(metaclass=Singleton):
             finally:
                 if inner_resp is not None:
                     resp = inner_resp
-        loguru_logger.debug(f"Spent {initial_usdt_spent:.1f} USDT at first.")
-        
-        # TODO: ...
-        for trading_price in trade_price_list:
-            side = "BUY"
-            if trading_price < latest_price:
-                side = "BUY"
-            elif trading_price > latest_price:
-                side = "SELL"
-            try:
-                res = await self._api_aync_client.create_order(
-                    symbol=sym,
-                    side=side,
-                    type="LIMIT",
-                    quoteOrderQty=decimal.Decimal("{:.3f}".format(single_trade_capacity)),
-                    price=decimal.Decimal("{:.3f}".format(trading_price)),
-                    newOrderRespType="RESULT",
-                    newClientOrderId=self._new_client_order_id(),
-                    recvWindow=2000,
-                )
-                loguru_logger.debug("Created order, res:{}", res)
-            except BinanceRequestException as e:
-                loguru_logger.error("Failed to create order for symbol:{}, err:{}.".format(sym, e))
-            except BinanceAPIException as e:
-                loguru_logger.error("Failed to create order for symbol:{}, err:{}.".format(sym, e))
+        loguru_logger.debug(f"Spent {initial_usdt_spent:.1f} USDT at first, got base asset:{initial_base_asset_qty:.5f}.")
+
+        sell_price = []
+        for target_price in self._target_price_list:
+            if target_price > latest_price:
+                sell_price.append(target_price)
+        self._single_trading_base_asset_capacity = initial_base_asset_qty / len(sell_price)
+        print(f"{Fore.GREEN} ======================================= GRID TRADING INITIAL TRADING ======================================= {Style.RESET_ALL}")
+
+        print(f"{Fore.GREEN} ======================================= GRID TRADING PLACED ALL TARGET ORDERS ======================================= {Style.RESET_ALL}")
+        sell_orders = []
+        buy_orders = []
+        with shelve.open("grid_trading_orders.db", flag="w", writeback=True) as db:
+            db["active_sell"] = []
+            db["active_buy"] = []
+
+            for target_price in self._target_price_list:
+                if target_price > latest_price:
+                    # SELL
+                    client_order_id, binance_order_id, ok = await self._sell_base_asset(
+                        sym=sym,
+                        base_qty=self._single_trading_base_asset_capacity,
+                        price=str(target_price),
+                    )
+                    if ok:
+                        db["active_sell"].append(client_order_id)
+                        sell_orders.append((client_order_id, binance_order_id))
+                else:
+                    # BUY
+                    client_order_id, binance_order_id, ok = await self._buy_base_asset(
+                        sym=sym,
+                        quote_qty=self._single_trading_capacity,
+                        price=str(target_price),
+                    )
+                    if ok:
+                        db["active_buy"].append(client_order_id)
+                        buy_orders.append((client_order_id, binance_order_id))
+        print(f"{Fore.GREEN} ======================================= GRID TRADING PLACED ALL TARGET ORDERS ======================================= {Style.RESET_ALL}")
+
+        # task_feed_klines = asyncio.create_task(self._feed_klines(sym=sym, interval=AsyncBinanceRestAPIClient.KLINE_INTERVAL_5MINUTE))
+        # task_feed_trade_data = asyncio.create_task(self._feed_trade_data(sym=sym))
+        # _, pending = await asyncio.wait(
+        #     [
+        #         task_feed_klines,
+        #         task_feed_trade_data,
+        #     ],
+        #     return_when=asyncio.FIRST_COMPLETED,
+        # )
+        # for task in pending:
+        #     task.cancel()

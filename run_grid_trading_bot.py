@@ -9,6 +9,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 import argparse
 import asyncio
+import shelve
 import sys
 import time
 import traceback
@@ -57,6 +58,16 @@ def parse_args():
         help="Show total profit.",
     )
     profit_parser.add_argument(
+        "--symbol",
+        type=str,
+        help="coin symbol, like BTCUSDT",
+        required=True,
+    )
+    symbol_info_parser = subparsers.add_parser(
+        "info",
+        help="Show information of coin symbol, like BTCUSDT.",
+    )
+    symbol_info_parser.add_argument(
         "--symbol",
         type=str,
         help="coin symbol, like BTCUSDT",
@@ -164,6 +175,16 @@ def parse_args():
         help="the unique order id",
         required=True,
     )
+    cancel_all_orders_parser = subparsers.add_parser(
+        "cancelall",
+        help="Cancel all active orders.",
+    )
+    cancel_all_orders_parser.add_argument(
+        "--symbol",
+        type=str,
+        help="coin symbol, like BTCUSDT",
+        required=True,
+    )
 
     args = parser.parse_args()
     return args
@@ -217,12 +238,17 @@ if __name__ == "__main__":
         task = asyncio.ensure_future(bot.is_ready())
         ready = loop.run_until_complete(task)
         if ready:
+            bot.base_asset = args.symbol[:-4]
+            bot.quote_asset = "USDT"
             if action == "balances":
-                task = asyncio.ensure_future(bot.show_balances(sym=args.symbol))
+                task = asyncio.ensure_future(bot.show_balances())
                 loop.run_until_complete(task)
             elif action == "profit":
                 prepare_env(loop=loop)
                 task = asyncio.ensure_future(bot.show_profit(sym=args.symbol))
+                loop.run_until_complete(task)
+            elif action == "info":
+                task = asyncio.ensure_future(bot.show_symbol_information(sym=args.symbol))
                 loop.run_until_complete(task)
             elif action == "orderbook":
                 task = asyncio.ensure_future(bot.latest_orderbook(sym=args.symbol))
@@ -250,6 +276,16 @@ if __name__ == "__main__":
             elif action == "cancel":
                 task = asyncio.ensure_future(bot.cancel_order(sym=args.symbol, order_id=args.order_id))
                 loop.run_until_complete(task)
+            elif action == "cancelall":
+                with shelve.open("grid_trading_orders.db", flag="r") as db:
+                    if "active_sell" in db.keys():
+                        for order_id in db["active_sell"]:
+                            task = asyncio.ensure_future(bot.cancel_order(sym=args.symbol, order_id=order_id))
+                            loop.run_until_complete(task)
+                    if "active_buy" in db.keys():
+                        for order_id in db["active_buy"]:
+                            task = asyncio.ensure_future(bot.cancel_order(sym=args.symbol, order_id=order_id))
+                            loop.run_until_complete(task)
     except Exception:
         traceback.print_exc()
     finally:
