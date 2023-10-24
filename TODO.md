@@ -1,0 +1,2 @@
+2023-10-24 17:37:40.009 | ERROR    | ctx= | - Failed to create spot-limit-order for symbol:BTCUSDT, err:APIError(code=-1015): Too many new orders; current limit is 50 orders per 10 SECOND..
+2023-10-24 17:37:40.125 | ERROR    | ctx= | - Failed to create spot-limit-order for symbol:BTCUSDT, err:APIError(code=-2010): Filter failure: MAX_NUM_ORDERS.

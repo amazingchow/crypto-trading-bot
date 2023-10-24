@@ -10,14 +10,10 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import argparse
 import asyncio
 import sys
-import time
 import traceback
 
 from internal.bot.simple_trading_bot import BinanceSimpleTradingBot
-from internal.db import init_instance as init_db_instance
-from internal.db import instance as db_instance
 from internal.utils.loguru_logger import init_global_logger
-from loguru import logger as loguru_logger
 
 # Coroutine to be invoked when the event loop is shutting down.
 _cleanup_coroutine = None
