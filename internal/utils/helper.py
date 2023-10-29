@@ -9,6 +9,13 @@ from functools import wraps
 from loguru import logger as loguru_logger
 
 
+def now():
+    """Use monotonic time if available, otherwise fall back to the system clock."""
+    if hasattr(time, "monotonic"):
+        return time.monotonic
+    return time.time
+
+
 def timeit(func):
 
     async def process(func, *args, **kwargs):

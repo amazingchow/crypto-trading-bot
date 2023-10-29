@@ -11,6 +11,7 @@ from binance.exceptions import BinanceAPIException, BinanceRequestException
 from binance.streams import BinanceSocketManager
 from colorama import Fore, Style
 from internal.db import instance as db_instance
+from internal.ratelimiter import limits, sleep_and_retry
 from internal.singleton import Singleton
 from internal.utils.helper import timeit, gen_n_digit_nums_and_letters
 from loguru import logger as loguru_logger
@@ -456,9 +457,8 @@ class BinanceGridTradingBot(metaclass=Singleton):
                 loguru_logger.error(f"Failed to receive trade data<symbol:{sym}> anymore, binance's exception:{e}.")
                 break
 
-    async def _buy_base_asset(self, sym: str, quote_qty: float, price: str) -> Tuple[str, str, bool]:
+    async def _buy_base_asset(self, sym: str, quote_qty: float, price: str, client_order_id: str) -> Tuple[str, str, bool]:
         done = False
-        client_order_id = gen_n_digit_nums_and_letters(22)
         binance_order_id = ""
         try:
             resp = await self._aclient.create_order(
@@ -471,23 +471,21 @@ class BinanceGridTradingBot(metaclass=Singleton):
                 newClientOrderId=client_order_id,
                 recvWindow=2000,
             )
-            done = True
             if resp is not None:
                 binance_order_id = resp["orderId"]
-                print(f"resp == {resp}")
                 await db_instance().add_new_spot_limit_order(order=resp)
-        except BinanceRequestException as e:
-            loguru_logger.error(f"Failed to create spot-limit-order for symbol:{sym}, err:{e}.")
-        except BinanceAPIException as e:
-            loguru_logger.error(f"Failed to create spot-limit-order for symbol:{sym}, err:{e}.")
+                done = True
+        except (BinanceRequestException, BinanceAPIException) as e:
+            loguru_logger.error(f"Failed to create spot-limit-order for symbol:{sym}, binance's exception:{e}.")
+        except Exception as e:
+            loguru_logger.error(f"Failed to create spot-limit-order for symbol:{sym}, internal exception:{e}.")
         finally:
             if done:
-                loguru_logger.debug(f"Created spot-limit-order<order_id:{client_order_id}> for symbol:{sym}.")             
+                loguru_logger.debug(f"Created spot-limit-order<order_id:{client_order_id}> for symbol:{sym}.")
             return (client_order_id, binance_order_id, done)
 
-    async def _sell_base_asset(self, sym: str, base_qty: float, price: str) -> Tuple[str, str, bool]:
+    async def _sell_base_asset(self, sym: str, base_qty: float, price: str, client_order_id: str) -> Tuple[str, str, bool]:
         done = False
-        client_order_id = gen_n_digit_nums_and_letters(22)
         binance_order_id = ""
         try:
             resp = await self._aclient.create_order(
@@ -500,19 +498,50 @@ class BinanceGridTradingBot(metaclass=Singleton):
                 newClientOrderId=client_order_id,
                 recvWindow=2000,
             )
-            done = True
             if resp is not None:
                 binance_order_id = resp["orderId"]
-                print(f"resp == {resp}")
                 await db_instance().add_new_spot_limit_order(order=resp)
-        except BinanceRequestException as e:
-            loguru_logger.error(f"Failed to create spot-limit-order for symbol:{sym}, err:{e}.")
-        except BinanceAPIException as e:
-            loguru_logger.error(f"Failed to create spot-limit-order for symbol:{sym}, err:{e}.")
+                done = True
+        except (BinanceRequestException, BinanceAPIException) as e:
+            loguru_logger.error(f"Failed to create spot-limit-order for symbol:{sym}, binance's exception:{e}.")
+        except Exception as e:
+            loguru_logger.error(f"Failed to create spot-limit-order for symbol:{sym}, internal exception:{e}.")
         finally:
             if done:
-                loguru_logger.debug(f"Created spot-limit-order<order_id:{client_order_id}> for symbol:{sym}.")      
+                loguru_logger.debug(f"Created spot-limit-order<order_id:{client_order_id}> for symbol:{sym}.")
             return (client_order_id, binance_order_id, done)
+
+    @sleep_and_retry
+    @limits(calls=25, period=10)
+    async def _place_all_initial_target_orders(self, sym: str, latest_price: float):
+        print(f"{Fore.GREEN} ======================================= GRID TRADING PLACED ALL TARGET ORDERS ======================================= {Style.RESET_ALL}")
+        with shelve.open("grid_trading_orders.db", flag="w", writeback=True) as db:
+            db["active_sell"], db["active_buy"] = [], []
+
+            for target_price in self._target_price_list:
+                client_order_id = gen_n_digit_nums_and_letters(22)
+
+                if target_price > latest_price:
+                    # SELL
+                    _, binance_order_id, ok = await self._sell_base_asset(
+                        sym=sym,
+                        base_qty=self._single_trading_base_asset_capacity,
+                        price=str(target_price),
+                        client_order_id=client_order_id,
+                    )
+                    if ok:
+                        db["active_sell"].append(client_order_id)
+                else:
+                    # BUY
+                    _, binance_order_id, ok = await self._buy_base_asset(
+                        sym=sym,
+                        quote_qty=self._single_trading_capacity,
+                        price=str(target_price),
+                        client_order_id=client_order_id,
+                    )
+                    if ok:
+                        db["active_buy"].append(client_order_id)
+        print(f"{Fore.GREEN} ======================================= GRID TRADING PLACED ALL TARGET ORDERS ======================================= {Style.RESET_ALL}")
 
     # async def _do_grid_trading(self, sym: str):
     #     for trading_price in target_price_list:
@@ -645,35 +674,7 @@ class BinanceGridTradingBot(metaclass=Singleton):
         self._single_trading_base_asset_capacity = initial_base_asset_qty / len(sell_price)
         print(f"{Fore.GREEN} ======================================= GRID TRADING INITIAL TRADING ======================================= {Style.RESET_ALL}")
 
-        print(f"{Fore.GREEN} ======================================= GRID TRADING PLACED ALL TARGET ORDERS ======================================= {Style.RESET_ALL}")
-        sell_orders = []
-        buy_orders = []
-        with shelve.open("grid_trading_orders.db", flag="w", writeback=True) as db:
-            db["active_sell"] = []
-            db["active_buy"] = []
-
-            for target_price in self._target_price_list:
-                if target_price > latest_price:
-                    # SELL
-                    client_order_id, binance_order_id, ok = await self._sell_base_asset(
-                        sym=sym,
-                        base_qty=self._single_trading_base_asset_capacity,
-                        price=str(target_price),
-                    )
-                    if ok:
-                        db["active_sell"].append(client_order_id)
-                        sell_orders.append((client_order_id, binance_order_id))
-                else:
-                    # BUY
-                    client_order_id, binance_order_id, ok = await self._buy_base_asset(
-                        sym=sym,
-                        quote_qty=self._single_trading_capacity,
-                        price=str(target_price),
-                    )
-                    if ok:
-                        db["active_buy"].append(client_order_id)
-                        buy_orders.append((client_order_id, binance_order_id))
-        print(f"{Fore.GREEN} ======================================= GRID TRADING PLACED ALL TARGET ORDERS ======================================= {Style.RESET_ALL}")
+        await self._place_all_initial_target_orders(sym=sym, latest_price=latest_price)
 
         # task_feed_klines = asyncio.create_task(self._feed_klines(sym=sym, interval=AsyncBinanceRestAPIClient.KLINE_INTERVAL_5MINUTE))
         # task_feed_trade_data = asyncio.create_task(self._feed_trade_data(sym=sym))
