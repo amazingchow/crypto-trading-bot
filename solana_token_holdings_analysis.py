@@ -3,7 +3,8 @@ from datetime import datetime
 from typing import Dict, List
 
 import pandas as pd
-import requests
+
+from internal.infra.http.http_client import HttpClient
 
 
 class SolanaTokenAnalyzer:
@@ -26,10 +27,15 @@ class SolanaTokenAnalyzer:
         }
         
         try:
-            response = requests.post(self.rpc_url, headers=self.headers, json=payload)
+            response = HttpClient.get_instance().get_client().post(
+                self.rpc_url,
+                headers=self.headers,
+                json=payload,
+                extensions={"trace": HttpClient.get_instance().alog_event}
+            )
             response.raise_for_status()
             return response.json()
-        except requests.exceptions.RequestException as exc:
+        except Exception as exc:
             raise Exception(f"RPC 请求失败: {str(exc)}")
 
     def get_token_accounts(self, mint_address: str, limit: int = 100) -> pd.DataFrame:

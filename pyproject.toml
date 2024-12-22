@@ -11,11 +11,13 @@ package-mode = false
 [tool.poetry.dependencies]
 python = "^3.10"
 colorama = "^0.4.6"
+httpx = "^0.28.1"
 jsonschema = "^4.23.0"
 loguru = "^0.7.3"
 motor = "^3.6.0"
 pandas = "^2.2.3"
 python-binance = "^1.0.25"
+python-dotenv = "^1.0.1"
 tabulate = "^0.9.0"
 tenacity = "^9.0.0"
 ujson = "^5.10.0"

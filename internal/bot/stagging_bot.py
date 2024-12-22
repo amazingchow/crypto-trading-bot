@@ -11,8 +11,8 @@ from binance.exceptions import BinanceAPIException, BinanceOrderException, Binan
 from colorama import Fore, Style
 from loguru import logger as loguru_logger
 
+from internal.classes.singleton import Singleton
 from internal.db import instance as db_instance
-from internal.singleton import Singleton
 from internal.utils.helper import gen_n_digit_nums_and_letters, timeit
 
 

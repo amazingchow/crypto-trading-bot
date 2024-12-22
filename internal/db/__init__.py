@@ -17,7 +17,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from internal.singleton import Singleton
+from internal.classes.singleton import Singleton
 
 
 def _create_retry_decorator(min_secs: int = 1, max_secs: int = 60, max_retries: int = 3) -> Callable[[Any], Any]:
