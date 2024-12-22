@@ -3,18 +3,19 @@ import asyncio
 import decimal
 import os
 import shelve
-import tabulate
 import time
+from typing import Any, Dict, NoReturn, Optional, Tuple
 
+import tabulate
 from binance.client import AsyncClient as AsyncBinanceRestAPIClient
 from binance.exceptions import BinanceAPIException, BinanceRequestException
 from binance.streams import BinanceSocketManager
 from colorama import Fore, Style
+from loguru import logger as loguru_logger
+
 from internal.db import instance as db_instance
 from internal.singleton import Singleton
-from internal.utils.helper import timeit, gen_n_digit_nums_and_letters
-from loguru import logger as loguru_logger
-from typing import Any, Dict, NoReturn, Optional, Tuple
+from internal.utils.helper import gen_n_digit_nums_and_letters, timeit
 
 
 class BinanceGridTradingBot(metaclass=Singleton):
@@ -482,7 +483,7 @@ class BinanceGridTradingBot(metaclass=Singleton):
             loguru_logger.error(f"Failed to create spot-limit-order for symbol:{sym}, err:{e}.")
         finally:
             if done:
-                loguru_logger.debug(f"Created spot-limit-order<order_id:{client_order_id}> for symbol:{sym}.")             
+                loguru_logger.debug(f"Created spot-limit-order<order_id:{client_order_id}> for symbol:{sym}.")
             return (client_order_id, binance_order_id, done)
 
     async def _sell_base_asset(self, sym: str, base_qty: float, price: str) -> Tuple[str, str, bool]:
@@ -511,7 +512,7 @@ class BinanceGridTradingBot(metaclass=Singleton):
             loguru_logger.error(f"Failed to create spot-limit-order for symbol:{sym}, err:{e}.")
         finally:
             if done:
-                loguru_logger.debug(f"Created spot-limit-order<order_id:{client_order_id}> for symbol:{sym}.")      
+                loguru_logger.debug(f"Created spot-limit-order<order_id:{client_order_id}> for symbol:{sym}.")
             return (client_order_id, binance_order_id, done)
 
     # async def _do_grid_trading(self, sym: str):

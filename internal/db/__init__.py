@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 import asyncio
-import jsonschema
 import logging
+import time
+from typing import Any, Callable, Dict, Optional, Tuple
+
+import jsonschema
 import pymongo
 import pymongo.errors as perrors
-import time
-
-from internal.singleton import Singleton
 from loguru import logger as loguru_logger
 from motor.motor_asyncio import AsyncIOMotorClient
 from tenacity import (
@@ -16,7 +16,8 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential,
 )
-from typing import Any, Callable, Dict, Optional, Tuple
+
+from internal.singleton import Singleton
 
 
 def _create_retry_decorator(min_secs: int = 1, max_secs: int = 60, max_retries: int = 3) -> Callable[[Any], Any]:

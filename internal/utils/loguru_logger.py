@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 import sys
+from os import environ
 
 from loguru import logger as loguru_logger
-from os import environ
 
 
 def _env(key, type_, default=None):

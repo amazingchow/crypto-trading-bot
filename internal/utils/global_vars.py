@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
-import ujson as json
+from typing import Any, Dict
 
-from typing import Any, \
-    Dict
+import ujson as json
 
 _GLOBAL_CONFIG = None
 

@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
 import os
-import tabulate
 import time
 
+import tabulate
 from binance.client import AsyncClient as AsyncBinanceRestAPIClient
-from binance.exceptions import BinanceAPIException, BinanceRequestException, BinanceOrderException
+from binance.exceptions import BinanceAPIException, BinanceOrderException, BinanceRequestException
 from colorama import Fore, Style
-from internal.singleton import Singleton
-from internal.utils.helper import timeit, gen_n_digit_nums_and_letters
 from loguru import logger as loguru_logger
+
+from internal.singleton import Singleton
+from internal.utils.helper import gen_n_digit_nums_and_letters, timeit
 
 
 class BinanceSimpleTradingBot(metaclass=Singleton):

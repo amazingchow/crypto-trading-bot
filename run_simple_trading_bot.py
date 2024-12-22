@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 import os
 import sys
+
 curdir = os.path.abspath(os.curdir)
 sys.path.append(os.path.join(curdir, "internal"))
 
 import urllib3
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 import argparse

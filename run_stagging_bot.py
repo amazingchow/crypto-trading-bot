@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 import os
 import sys
+
 curdir = os.path.abspath(os.curdir)
 sys.path.append(os.path.join(curdir, "internal"))
 
 import urllib3
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 import argparse
@@ -13,12 +15,13 @@ import sys
 import time
 import traceback
 
+from loguru import logger as loguru_logger
+
 from internal.bot.stagging_bot import BinanceStaggingBot
 from internal.db import init_instance as init_db_instance
 from internal.db import instance as db_instance
+from internal.utils.global_vars import get_config, set_config
 from internal.utils.loguru_logger import init_global_logger
-from internal.utils.global_vars import set_config, get_config
-from loguru import logger as loguru_logger
 
 # Coroutine to be invoked when the event loop is shutting down.
 _cleanup_coroutine = None
