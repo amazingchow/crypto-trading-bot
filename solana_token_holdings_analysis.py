@@ -31,7 +31,7 @@ class SolanaTokenAnalyzer:
                 self.rpc_url,
                 headers=self.headers,
                 json=payload,
-                extensions={"trace": HttpClient.get_instance().alog_event}
+                extensions={"trace": HttpClient.get_instance().log_event}
             )
             response.raise_for_status()
             return response.json()
